@@ -1,10 +1,8 @@
-#ifndef _COMMUNICATOR_H_
-#define _COMMUNICATOR_H_
-
 // This class implements the Grid-type Domain Decomposition Parallelization of General Molecular Dynamics and Monte Carlo Simulations
 // 
 // 2017-11-06
 
+#include <Communicator.h>
 #include <mpi.h>
 
 using namespace HamiltonSpace;
@@ -208,7 +206,29 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 {
     atom->nghost = 0; // Clear up the ghost atom lists
     
-    for 
+    int first = 0;
+    int last = atom->nlocal;
+    int count;
+    MPI_Status status;
+    MPI_Request request;
+
+    for (int iSwap = 0; iSwap < nSwaps; iSwap++)
+    {
+        atom->packSendAtoms(first, last, slablo[iSwap], slabhi[iSwap], pbcFlag[iSwap], &sendNum[iSwap], bufferSend[iSwap]);
+       
+        MPI_Send(&sendNum[iSwap], 1, MPI_INT, sendToProc[iSwap], 0, MPI_COMM_WORLD);
+        MPI_Recv(&recvNum[iSwap], 1, MPI_INT, recvFromProc[iSwap], 0, MPI_COMM_WORLD, &status);
+       
+        MPI_Irecv(bufferRecv[iSwap], recvNum[iSwap], MPI_DOUBLE, recvFromProc[iSwap], 0, MPI_COMM_WORLD, &request);
+        MPI_Send(bufferSend[iSwap], sendNum[iSwap], MPI_DOUBLE, sendToProc[iSwap], 0, MPI_COMM_WORLD);
+      
+        MPI_Wait(&request, &status); 
+
+        atom->unpackRecvAtoms(bufferRecv[iSwap], recvNum[iSwap]);
+
+        first = last;
+        last = last + recvNum[iSwap];
+    }
 } 
 
 /* Routine to migrate atoms to neighboring proc */
@@ -230,5 +250,4 @@ void Communicator::reverseCommunicateGhosts(std::shared_ptr<Atom> atom)
 }
 
 }
-#endif
 

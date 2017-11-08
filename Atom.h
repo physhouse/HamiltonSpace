@@ -13,7 +13,9 @@ class Atom
 public:
     Atom();
     ~Atom();
-private:
+    void packSendAtoms(int first, int last, HS_float lo, HS_float hi, int* count, std::vector<HS_float> &buffer);
+
+public:
     int natoms;		// total number of atoms
     int nlocal, nghost; // nlocal->number of host atoms, nghost->number of ghost atoms
     HS_float mass;	// For Lennard-Jones Particle with uniform mass
