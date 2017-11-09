@@ -13,6 +13,11 @@ Communicator::Communicator()
 
 Communicator::~Communicator()
 {
+    for (auto &item : swaps)
+    {
+        delete[] item.bufferSend;
+        delete[] item.bufferRecv;
+    }
 }
 
 void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
@@ -115,9 +120,12 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
 
     /* The total number of swaps need to be performed */
     int maxSwap = 2 * (need[0] + need[1] + need[2]);
-    sendToProc.resize(maxSwap);
-    recvFromProc.resize(maxSwap);
-    pbcFlags.resize(maxSwap);
+    swap.resize(maxSwap);
+    for (auto &item : swap)
+    {
+        item.bufferSend = new HS_float(BUFFMAX);
+        item.bufferRecv = new HS_float(BUFFMAX);
+    }
     
     /* Determining whether a PBC wrapping is needed for each swap 
        Also determine the slab region */
@@ -159,39 +167,40 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
         {
             if (j % 2 == 0)  // First-half: Receive from right and send to left
             {
-                sendToProc[iSwap] = neighbor[idim][0];
-                recvFromProc[iSwap] = neighbor[idim][1];
+                swap[iSwap].sendToProc = neighbor[idim][0];
+                swap[iSwap].recvFromProc = neighbor[idim][1];
                 sourceSlab = my3DLocation[idim] + j / 2;
+
                 lo = sourceSlab * boxLength[idim] / processorGrid[idim];
                 hi = std::min(atom.box.lo[idim] + cutoff, (sourceSlab + 1) * boxLength[idim] / processorGrid[idim]);
                 
                 if (my3DLocation[idim] == 0)
                 {
-                    pbcFlags[iSwap] |= PBC_ANY_FLAG;
-                    if (idim == 0) pbcFlags[iSwap] |= PBC_POS_X;
-                    if (idim == 1) pbcFlags[iSwap] |= PBC_POS_Y;
-                    if (idim == 2) pbcFlags[iSwap] |= PBC_POS_Z;
+                    swap[iSwap].pbcFlags |= PBC_ANY_FLAG;
+                    if (idim == 0) swap[iSwap].pbcFlags |= PBC_POS_X;
+                    if (idim == 1) swap[iSwap].pbcFlags |= PBC_POS_Y;
+                    if (idim == 2) swap[iSwap].pbcFlags |= PBC_POS_Z;
                 }
             }
             else // Second-half: Receive from left and send to right
             {
-                sendToProc[iSwap] = neighbor[idim][1];
-                recvFromProc[iSwap] = neighbor[idim][0];
+                swap[iSwap].sendToProc = neighbor[idim][1];
+                swap[iSwap].recvFromProc = neighbor[idim][1];
                 sourceSlab = my3DLocation[idim] - j / 2;
                 lo = std::max(atom.box.hi[idim] - cutoff, sourceSlab * boxLength[idim] / processorGrid[idim]);
                 hi = (sourceSlab + 1) * boxLength[idim] / processorGrid[idim];
 
                 if (my3DLocation[idim] == processorGrid[idim] - 1)
                 {
-                    pbcFlags[iSwap] |= PBC_ANY_FLAG;
-                    if (idim == 0) pbcFlags[iSwap] |= PBC_NEG_X;
-                    if (idim == 1) pbcFlags[iSwap] |= PBC_NEG_Y;
-                    if (idim == 2) pbcFlags[iSwap] |= PBC_NEG_Z;
+                    swap[iSwap].pbcFlags |= PBC_ANY_FLAG;
+                    if (idim == 0) swap[iSwap].pbcFlags |= PBC_NEG_X;
+                    if (idim == 1) swap[iSwap].pbcFlags |= PBC_NEG_Y;
+                    if (idim == 2) swap[iSwap].pbcFlags |= PBC_NEG_Z;
                 }
             }
  
-            slablo[iSwap] = lo;
-            slabhi[iSwap] = hi;
+            swap[iSwap].slablo = lo;
+            swap[iSwap].slabhi = hi;
             iSwap++;
         }
     }
@@ -204,7 +213,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
 /* Routine to generate the ghost atom lists */
 void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 {
-    atom->nghost = 0; // Clear up the ghost atom lists
+    atom->clearGhost(); // Clear up the ghost atom lists
     
     int first = 0;
     int last = atom->nlocal;
@@ -212,28 +221,35 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
     MPI_Status status;
     MPI_Request request;
 
-    for (int iSwap = 0; iSwap < nSwaps; iSwap++)
+    for (const auto& item : swap)
     {
-        atom->packSendAtoms(first, last, slablo[iSwap], slabhi[iSwap], pbcFlag[iSwap], &sendNum[iSwap], bufferSend[iSwap]);
+        atom->packSendAtoms(first, last, item.slablo, item.slabhi, item.pbcFlag, &item.sendNum, item.bufferSend);
        
-        MPI_Send(&sendNum[iSwap], 1, MPI_INT, sendToProc[iSwap], 0, MPI_COMM_WORLD);
-        MPI_Recv(&recvNum[iSwap], 1, MPI_INT, recvFromProc[iSwap], 0, MPI_COMM_WORLD, &status);
+        MPI_Send(&item.sendNum, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
+        MPI_Recv(&item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
        
-        MPI_Irecv(bufferRecv[iSwap], recvNum[iSwap], MPI_DOUBLE, recvFromProc[iSwap], 0, MPI_COMM_WORLD, &request);
-        MPI_Send(bufferSend[iSwap], sendNum[iSwap], MPI_DOUBLE, sendToProc[iSwap], 0, MPI_COMM_WORLD);
+        MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
+        MPI_Send(bufferSend[iSwap], sendNum[iSwap], MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
       
         MPI_Wait(&request, &status); 
 
-        atom->unpackRecvAtoms(bufferRecv[iSwap], recvNum[iSwap]);
+        atom->unpackRecvAtoms(item.bufferRecv, item.recvNum);
 
         first = last;
-        last = last + recvNum[iSwap];
+        last = last + item.recvNum;
     }
 } 
 
 /* Routine to migrate atoms to neighboring proc */
 void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
 {
+    for (int idim = 0; idim < 3; idim++)
+    {
+        atom->packExchange();
+
+        atom->unpackExchange();
+    }
+    
 }
 
 void Communicator::communicate()
