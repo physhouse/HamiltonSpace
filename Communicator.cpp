@@ -75,13 +75,13 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     
     int up, down, left, right, front, back;
     MPI_Cart_shift(GridWorld, 0, 1, &left, &right);
-    MPI_Cart_shift(GridWorld, 1, 1, &front, &back);
-    MPI_Cart_shift(GridWorld, 2, 1, &up, &down);
+    MPI_Cart_shift(GridWorld, 1, 1, &back, &front);
+    MPI_Cart_shift(GridWorld, 2, 1, &down, &up);
    
     neighbor[0][0] = left;
     neighbor[0][1] = right;
-    neighbor[1][0] = front;
-    neighbor[1][1] = back;
+    neighbor[1][0] = back;
+    neighbor[1][1] = front;
     neighbor[2][0] = down;
     neighbor[2][1] = up;
 
@@ -241,15 +241,46 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 } 
 
 /* Routine to migrate atoms to neighboring proc */
+/* This function is only called when rebuilding the neighbor lists together with generateGhosts() */
 void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
 {
+    MPI_Status status;
+    MPI_Request request;
+    int nsend, nrecv;
     for (int idim = 0; idim < 3; idim++)
     {
-        atom->packExchange();
+        if (processorGrid[idim] > 1)
+        {
+            /* Packing strategy:
+             * (1) When atom is about to leave this box, exchange it with atom at nlocal, nlocal--
+             * (2) Buffer the information of the leaving atom, nExchange++
+             * (3) After collecting the sending buffer, MPI_Send to the corresponding neighbors
+             */
+            atom->packExchange(bufferExchangeSend, &nsend, 2*idim);
 
-        atom->unpackExchange();
+            MPI_Send(&nsend, 1, MPI_INT, neighbor[idim][0], 0, MPI_COMM_WORLD);
+            MPI_Recv(&nrecv, 1, MPI_INT, neighbor[idim][1], 0, MPI_COMM_WORLD, &status);
+
+            MPI_Irecv(bufferExchangeRecv, nrecv, MPI_DOUBLE, neighbor[idim][1], 0, MPI_COMM_WORLD, &request);
+            MPI_Send(bufferExchangeSend, nsend, MPI_DOUBLE, neighbor[idim][0], 0, MPI_COMM_WORLD);
+
+            /* Unpacking strategy:
+             * Just check the incoming atoms and append it at the end, nlocal += nrecv
+             */
+            atom->unpackExchange(bufferExchangeRecv, nrecv);
+          
+            // Round 2: Send to right
+            atom->packExchange(bufferExchangeSend, &nsend, 2*idim + 1);
+
+            MPI_Send(&nsend, 1, MPI_INT, neighbor[idim][1], 0, MPI_COMM_WORLD);
+            MPI_Recv(&nrecv, 1, MPI_INT, neighbor[idim][0], 0, MPI_COMM_WORLD, &status);
+
+            MPI_Irecv(bufferExchangeRecv, nrecv, MPI_DOUBLE, neighbor[idim][0], 0, MPI_COMM_WORLD, &request);
+            MPI_Send(bufferExchangeSend, nsend, MPI_DOUBLE, neighbor[idim][1], 0, MPI_COMM_WORLD);
+
+            atom->unpackExchange(bufferExchangeRecv, nrecv);
+        }
     }
-    
 }
 
 void Communicator::communicate()
