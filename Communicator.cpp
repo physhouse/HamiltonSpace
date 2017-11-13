@@ -9,6 +9,9 @@ using namespace HamiltonSpace;
 
 Communicator::Communicator()
 {
+    HS_float cutoff = InputManager->cutNeighbor;
+    bufferExchangeSend = new HS_float(EXCHANGEMAX);
+    bufferExchangeRecv = new HS_float(EXCHANGEMAX);
 }
 
 Communicator::~Communicator()
@@ -18,6 +21,9 @@ Communicator::~Communicator()
         delete[] item.bufferSend;
         delete[] item.bufferRecv;
     }
+
+    delete[] bufferExchangeSend;
+    delete[] bufferExchangeRecv;
 }
 
 void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
@@ -33,17 +39,18 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
 
     std::vector<int> processorGrid(3);
     std::vector<HS_float> boxLength[3];
-    HS_float lx, ly, lz;
-    boxLength[0] = atom->xhi - atom->xlo;
-    boxLength[1] = atom->yhi - atom->ylo;
-    boxLength[2] = atom->zhi - atom->zlo;
+    boxLength[0] = atom->box.lengthx;
+    boxLength[1] = atom->box.lengthy;
+    boxLength[2] = atom->box.lengthz;
  
     HS_float bestSurface = INFINITY;
     for (int nx=1; nx<=nproc; nx++)
     {
         for (int ny=1; ny<=nproc/nx; ny++)
         {
-            HS_float surf = lx * ly / nx / ny + lx * lz / nx / nz + ly * lz / ny / nz;
+            HS_float surf = boxLength[0] * boxLength[1] / nx / ny + boxLength[0] * boxLength[2] / nx / nz 
+                          + boxLength[1] * boxLength[2] / ny / nz;
+
             if (surf < bestSurface)
             {
                 processorGrid[0] = nx;
@@ -87,12 +94,12 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
 
 
     /* Scheme of the neighbors
-              UP
-              |    FRONT
+              UP(z axis)
+              |    FRONT (y axis)
               |   /
               |  /
               | /
-    LEFT------ME------RIGHT
+    LEFT------ME------RIGHT (x axis)
              /|
             / |
            /  |
@@ -114,9 +121,9 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     
     /* Determine how many cells I need at each direction*/
     std::vector<int> need(3,0);
-    need[0] = static_cast<int>(cutoff * processorGrid[0] / lx + 1);
-    need[1] = static_cast<int>(cutoff * processorGrid[1] / lx + 1);
-    need[2] = static_cast<int>(cutoff * processorGrid[2] / lx + 1);
+    need[0] = static_cast<int>(cutoff * processorGrid[0] / boxLength[0] + 1);
+    need[1] = static_cast<int>(cutoff * processorGrid[1] / boxLength[1] + 1);
+    need[2] = static_cast<int>(cutoff * processorGrid[2] / boxLength[2] + 1);
 
     /* The total number of swaps need to be performed */
     int maxSwap = 2 * (need[0] + need[1] + need[2]);
@@ -199,6 +206,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
                 }
             }
  
+            swap[iSwap].dim = idim;
             swap[iSwap].slablo = lo;
             swap[iSwap].slabhi = hi;
             iSwap++;
@@ -223,17 +231,17 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 
     for (const auto& item : swap)
     {
-        atom->packSendAtoms(first, last, item.slablo, item.slabhi, item.pbcFlag, &item.sendNum, item.bufferSend);
+        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlag, &item.sendNum, item.bufferSend);
        
         MPI_Send(&item.sendNum, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
         MPI_Recv(&item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
        
         MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
-        MPI_Send(bufferSend[iSwap], sendNum[iSwap], MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
+        MPI_Send(item.bufferSend, sendNum[iSwap], MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
       
         MPI_Wait(&request, &status); 
 
-        atom->unpackRecvAtoms(item.bufferRecv, item.recvNum);
+        atom->unpackRecvAtoms(item.recvNum, item.bufferRecv);
 
         first = last;
         last = last + item.recvNum;
@@ -267,7 +275,7 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
             /* Unpacking strategy:
              * Just check the incoming atoms and append it at the end, nlocal += nrecv
              */
-            atom->unpackExchange(bufferExchangeRecv, nrecv);
+            atom->unpackExchange(nrecv, bufferExchangeRecv);
           
             // Round 2: Send to right
             atom->packExchange(bufferExchangeSend, &nsend, 2*idim + 1);
@@ -278,7 +286,7 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
             MPI_Irecv(bufferExchangeRecv, nrecv, MPI_DOUBLE, neighbor[idim][0], 0, MPI_COMM_WORLD, &request);
             MPI_Send(bufferExchangeSend, nsend, MPI_DOUBLE, neighbor[idim][1], 0, MPI_COMM_WORLD);
 
-            atom->unpackExchange(bufferExchangeRecv, nrecv);
+            atom->unpackExchange(nrecv, bufferExchangeRecv);
         }
     }
 }
