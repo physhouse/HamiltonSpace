@@ -3,11 +3,15 @@
 
 namespace HamiltonSpace {
 
+#include <Type.h>
+
 class InputManager
 {
 public:
-    int 
-
+    HS_float boxLength;
+    HS_float beta;
+    int      nsteps;
+    HS_float dt;
 }
 
 }

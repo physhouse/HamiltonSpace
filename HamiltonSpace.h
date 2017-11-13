@@ -14,6 +14,7 @@ public:
     exec();
 
 private:
+    std::shared_ptr<class InputManager> input;
     std::shared_ptr<class Atom> atom;
     std::shared_ptr<class NeighborList> neighbor;
     std::shared_ptr<class Communication> messenger;
