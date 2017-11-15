@@ -5,6 +5,7 @@
 #include <vector>
 #include <Atom.h>
 #include <Type.h>
+#include <InputManager.h>
 
 namespace HamiltonSpace {
 
@@ -19,8 +20,9 @@ struct Box
 class Atom
 {
 public:
-    Atom();
+    Atom(InputManager* input);
     ~Atom();
+   
     void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int* count, HS_float* buffer);
     void unpackRecvAtoms(int count, HS_float* buffer);
     void packExchange(HS_float* buffer, int count, int dimDirectionIndex);

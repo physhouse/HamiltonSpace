@@ -8,13 +8,13 @@ namespace HamiltonSpace {
 
 inline HS_float randomGauss()
 {
-    static double n2 = 0.0;
+    static HS_float n2 = 0.0;
     static int n2_cached = 0;
-    double mean = 0.0;
-    double stddev = 1.0;
+    HS_float mean = 0.0;
+    HS_float stddev = 1.0;
     if (!n2_cached)
     {
-        double x, y, r;
+        HS_float x, y, r;
         do
         {
             x = 2.0*rand()/RAND_MAX - 1;
@@ -24,10 +24,10 @@ inline HS_float randomGauss()
         }
         while (r > 1.0);
         {
-            double d = sqrt(-2.0*log(r)/r);
-            double n1 = x*d;
+            HS_float d = sqrt(-2.0*log(r)/r);
+            HS_float n1 = x*d;
             n2 = y*d;
-            double result = n1*stddev + mean;
+            HS_float result = n1*stddev + mean;
             n2_cached = 1;
             return result;
         }

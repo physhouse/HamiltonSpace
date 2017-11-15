@@ -6,15 +6,34 @@
 
 using namespace HamiltonSpace;
 
-Atom::Atom()
+Atom::Atom(InputManager* input)
 {
+    mass = input->mass;
+    nlocal = input->atomPerProc;
+    nghost = 0;
+    nall = nlocal + nghost;
+
+    box.lengthx = box.lengthy = box.lengthz = input->boxLength;
+    range.resize(3);
+    for (auto item: range) item.resize(2);
+
+    x.resize(MAX_ARRAY);
+    v.resize(MAX_ARRAY);
+    f.resize(MAX_ARRAY);
+    for (int i=0; i < MAX_ARRAY; i++)
+    {
+        x[i].resize(3);
+        v[i].resize(3);
+        f[i].resize(3);
+    }
 }
 
 Atom::~Atom()
 {
+    
 }
 
-Atom::genInitialConfig()
+Atom::genInitialConfig(InputManager* input)
 {
     /* Default: Generate Simple Cublc Lattice */
     int nperdim = std::cbrt(nlocal);
@@ -31,7 +50,7 @@ Atom::genInitialConfig()
         x[i][2] = (nz + 0.5) * gridSize + box.range[2][0];
        
         /* Initial Velocity from Maxwell Boltzmann Distribution */ 
-        HS_float factor = 1.0 / std::sqrt(mass * InputManager->beta);
+        HS_float factor = 1.0 / std::sqrt(mass * input->beta);
         v[i][0] = factor * randGauss();
         v[i][1] = factor * randGauss();
         v[i][2] = factor * randGauss();

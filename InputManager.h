@@ -5,13 +5,14 @@ namespace HamiltonSpace {
 
 #include <Type.h>
 
-class InputManager
+struct InputManager
 {
-public:
     HS_float boxLength;
     HS_float beta;
     int      nsteps;
     HS_float dt;
+    int      atomPerProc;
+    HS_float mass;
 }
 
 }
