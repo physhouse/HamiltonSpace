@@ -21,14 +21,16 @@ Communicator::Communicator(std::shared_ptr<InputManager> input)
 
 Communicator::~Communicator()
 {
+    printf("entering\n");
+    delete[] bufferExchangeSend;
+    delete[] bufferExchangeRecv;
+    printf("here\n");
+
     for (auto &item : swap)
     {
         delete[] item.bufferSend;
         delete[] item.bufferRecv;
     }
-
-    delete[] bufferExchangeSend;
-    delete[] bufferExchangeRecv;
 }
 
 void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
@@ -97,6 +99,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     neighbor[2][0] = down;
     neighbor[2][1] = up;
 
+    printf("[Communicator] Neighbors building finished\n");
 
     /* Scheme of the neighbors
               UP(z axis)
@@ -119,7 +122,9 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     {
         atom->box.range[idim][0] = my3DLocation[idim] * boxLength[idim] / processorGrid[idim];
         atom->box.range[idim][1] = (my3DLocation[idim]+1) * boxLength[idim] / processorGrid[idim];
+        //printf("%lf %lf\n", atom->box.range[idim][0], atom->box.range[idim][1]);
     }
+    printf("[Communicator] Spatial Domain Boundary finished\n");
 
     // Step 3: Generate the send and recv processor IDS
     // Determining all the processor IDs to get atoms from when building ghost atoms
@@ -133,12 +138,14 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     /* The total number of swaps need to be performed */
     int maxSwap = 2 * (need[0] + need[1] + need[2]);
     swap.resize(maxSwap);
+    printf("[Communicator] Number of Swaps = %d\n", maxSwap);
     for (auto &item : swap)
     {
         item.bufferSend = new HS_float(BUFFMAX);
         item.bufferRecv = new HS_float(BUFFMAX);
     }
     
+    printf("[Communicator] Buffer Allocation finished\n");
     /* Determining whether a PBC wrapping is needed for each swap 
        Also determine the slab region */
 
@@ -220,6 +227,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
 
     // Total number of Swaps need to be performed
     numSwaps = iSwap;
+    printf("[Communicator] Communicator setup finished\n");
          
 }
 
@@ -233,13 +241,17 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
     int count;
     MPI_Status status;
     MPI_Request request;
+  
+    int nsend, nrecv;
 
     for (const auto& item : swap)
     {
-        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, &item.sendNum, item.bufferSend);
-       
-        MPI_Send((void *)item.sendNum, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
-        MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
+        //printf("%d %d %lf %lf\n", first, last, item.slablo, item.slabhi);
+        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, (int *)&(item.sendNum), item.bufferSend);
+        //MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
+        MPI_Irecv((void *)&(item.recvNum), 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
+        MPI_Send((void *)&(item.sendNum), 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
+        printf("%d %d\n", item.sendNum, item.recvNum); 
        
         MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
         MPI_Send(item.bufferSend, item.sendNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
@@ -248,7 +260,8 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 
         atom->unpackRecvAtoms(item.recvNum, item.bufferRecv);
 
-        first = last;
+        //first = last;
+        first = 0;
         last = last + item.recvNum;
     }
 } 

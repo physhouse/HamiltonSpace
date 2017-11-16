@@ -10,6 +10,7 @@ int main(int argc, char** argv)
     auto hs = std::make_shared<HamiltonSpace>();
 
     MPI_Barrier(MPI_COMM_WORLD);
+    printf("Wrapping Up..\n");
     MPI_Finalize();
     return 0;
 }

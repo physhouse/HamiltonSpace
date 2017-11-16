@@ -1,6 +1,6 @@
 #include "HamiltonSpace.h"
-#include "Atom.h"
 #include "Parser.h"
+#include <cstdio>
 
 using namespace Hamilton_Space;
 
@@ -8,12 +8,20 @@ HamiltonSpace::HamiltonSpace()
 {
     input = std::make_shared<InputManager>();
     parseInput();
+
     atom = std::make_shared<Atom>(input);
+
     messenger = std::make_shared<Communicator>(input);
     messenger->setup(input->cutNeighbor, atom);
 
     atom->genInitialConfig(input);
     exec();
+    printf("finished\n");
+}
+
+HamiltonSpace::~HamiltonSpace()
+{
+    //printf("deleting HamiltonSpace\n");
 }
 
 void HamiltonSpace::parseInput()

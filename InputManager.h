@@ -1,9 +1,9 @@
 #ifndef _INPUTMANAGER_H_
 #define _INPUTMANAGER_H_
 
-namespace Hamilton_Space {
-
 #include "Type.h"
+
+namespace Hamilton_Space {
 
 struct InputManager
 {

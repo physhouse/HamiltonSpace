@@ -3,10 +3,12 @@
 #include "Type.h"
 #include "Random.h"
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 
 using namespace Hamilton_Space;
 
-Atom::Atom(InputManager* input)
+Atom::Atom(std::shared_ptr<InputManager> input)
 {
     mass = input->mass;
     nlocal = input->atomPerProc;
@@ -15,7 +17,7 @@ Atom::Atom(InputManager* input)
 
     box.lengthx = box.lengthy = box.lengthz = input->boxLength;
     box.range.resize(3);
-    for (auto item: box.range) item.resize(2);
+    for (auto& item: box.range) item.resize(2);
 
     x.resize(MAX_ARRAY);
     v.resize(MAX_ARRAY);
@@ -30,10 +32,10 @@ Atom::Atom(InputManager* input)
 
 Atom::~Atom()
 {
-    
+    printf("Deleting Atom\n");
 }
 
-void Atom::genInitialConfig(InputManager* input)
+void Atom::genInitialConfig(std::shared_ptr<InputManager> input)
 {
     /* Default: Generate Simple Cublc Lattice */
     int nperdim = std::cbrt(nlocal);
@@ -70,13 +72,14 @@ void Atom::packSendAtoms(int first,
 			 HS_float lo,
 			 HS_float hi,
                          int pbcFlag,
-			 int& count,
+			 int* count,
 			 HS_float* bufferSend)
 {
-    count = 0;
+    *count = 0;
     bool pbcAny = pbcFlag & PBC_ANY_FLAG;
     int pbcx, pbcy, pbcz;
     pbcx = pbcy = pbcz = 0;
+    //printf("%d %d pbcAny = %d\n", first, last, pbcAny);
 
     if (pbcAny)
     {
@@ -87,13 +90,16 @@ void Atom::packSendAtoms(int first,
         if (pbcFlag & PBC_POS_Z) pbcz = 1;
         else if (pbcFlag & PBC_NEG_Z) pbcz = -1;
 
+        printf("x y z = %d %d %d\n", pbcx, pbcy, pbcz);
+
         for (int i = first; i <= last; i++)
         {
             if (x[i][dim] < hi && x[i][dim] > lo)
             {
-                bufferSend[count++] = x[i][0] + pbcx * box.lengthx;
-                bufferSend[count++] = x[i][1] + pbcy * box.lengthy;
-                bufferSend[count++] = x[i][2] + pbcz * box.lengthz;
+                bufferSend[(*count)++] = x[i][0] + pbcx * box.lengthx;
+                bufferSend[(*count)++] = x[i][1] + pbcy * box.lengthy;
+                bufferSend[(*count)++] = x[i][2] + pbcz * box.lengthz;
+                //printf("here %lf %lf %lf count = %d\n", x[i][0], x[i][1], x[i][2], *count);
             }
         }
     }
@@ -103,9 +109,9 @@ void Atom::packSendAtoms(int first,
         {
             if (x[i][dim] < hi && x[i][dim] > lo)
             {
-                bufferSend[count++] = x[i][0];
-                bufferSend[count++] = x[i][1];
-                bufferSend[count++] = x[i][2];
+                bufferSend[(*count)++] = x[i][0];
+                bufferSend[(*count)++] = x[i][1];
+                bufferSend[(*count)++] = x[i][2];
             }
         }
     }
@@ -128,11 +134,11 @@ void Atom::unpackRecvAtoms(int count,
 /* Wrap up the atoms to be exchanged in Buffer
  * Carefully deal with the holes left in current x,v,f array */
 void Atom::packExchange(HS_float* buffer,
-			int& nsend,
+		        int* nsend,
 			int dimDirectionIndex)
 {
     int i = 0;
-    nsend = 0;
+    *nsend = 0;
     int dim = dimDirectionIndex / 2;
     int direction = dimDirectionIndex % 2;
 
@@ -143,12 +149,12 @@ void Atom::packExchange(HS_float* buffer,
         if (exchange_down || exchange_up)
         {
             
-            buffer[nsend++] = x[i][0];
-            buffer[nsend++] = x[i][1];
-            buffer[nsend++] = x[i][2];
-            buffer[nsend++] = v[i][0];
-            buffer[nsend++] = v[i][1];
-            buffer[nsend++] = v[i][2];
+            buffer[*nsend++] = x[i][0];
+            buffer[*nsend++] = x[i][1];
+            buffer[*nsend++] = x[i][2];
+            buffer[*nsend++] = v[i][0];
+            buffer[*nsend++] = v[i][1];
+            buffer[*nsend++] = v[i][2];
           
             /* Exchange the information of x[i] with x[nlocal-1] then nlocal-- 
              * Discarding the i atom */

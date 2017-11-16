@@ -1,16 +1,18 @@
-OPT     = -std=c++0x -O3
-CC      = g++ $(OPT)
+OPT     = -std=c++0x -O3 -g
+CC      = mpiicpc $(OPT)
 
-hs_mpi: main.o NMDPD.o Frame.o
-	$(CC) -o NMDPD.x main.o NMDPD.o Frame.o
+hs_mpi: main.o Atom.o Communicator.o HamiltonSpace.o
+	$(CC) -o hs_mpi main.o Atom.o Communicator.o HamiltonSpace.o
 
 main.o: main.cpp
 	$(CC) -c main.cpp
 
-NMDPD.o: NMDPD.cpp
-	$(CC) $(CFLAGS) -c NMDPD.cpp
+HamiltonSpace.o: HamiltonSpace.cpp
+	$(CC) -c HamiltonSpace.cpp
 
-Frame.o: Frame.cpp
-	$(CC) -c Frame.cpp
+Atom.o: Atom.cpp
+	$(CC) -c Atom.cpp
 
+Communicator.o: Communicator.cpp
+	$(CC) -c Communicator.cpp
 

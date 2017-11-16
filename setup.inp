@@ -1,0 +1,7 @@
+input->boxLength=100.0
+input->beta=1.0
+input->nsteps=1
+input->dt=0.1
+input->atomPerProc=1000
+input->mass=1.0
+input->cutNeighbor=30.0

@@ -1,9 +1,8 @@
-#ifndef _HAMILTONSPACE_H_
-#define _HAMILTONSPACE_H_
+#ifndef _ATOM_H_
+#define _ATOM_H_
 
 #include <memory>
 #include <vector>
-#include "Atom.h"
 #include "Type.h"
 #include "InputManager.h"
 
@@ -20,14 +19,14 @@ struct Box
 class Atom
 {
 public:
-    Atom(InputManager* input);
+    Atom(std::shared_ptr<InputManager> input);
     ~Atom();
-    void genInitialConfig(InputManager* input);
+    void genInitialConfig(std::shared_ptr<InputManager> input);
     void clearGhost();
    
-    void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int pbcFlag, const int* count, HS_float* buffer);
+    void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int pbcFlag, int* count, HS_float* buffer);
     void unpackRecvAtoms(int count, HS_float* buffer);
-    void packExchange(HS_float* buffer, const int* count, int dimDirectionIndex);
+    void packExchange(HS_float* buffer, int* count, int dimDirectionIndex);
     void unpackExchange(int count, HS_float* buffer);
     void swap(int i, int j);
 
