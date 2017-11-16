@@ -5,12 +5,13 @@
 // 
 // 2017-11-06
 
-#include <map>
 #include <vector>
-#include <Atom.h>
-#include <string>
+#include <memory>
+#include "Atom.h"
+#include "Type.h"
+#include "InputManager.h"
 
-namespace HamiltonSpace {
+namespace Hamilton_Space {
 
 struct Swap
 {
@@ -31,21 +32,22 @@ struct Swap
 class Communicator
 {
 public:
-    Communicator();
+    Communicator(std::shared_ptr<InputManager> input);
     ~Communicator();
-    void setup(HS_Float, std::shared_ptr<Atom>);
-    void generateGhosts(std::shared_ptr<Atom>);			// Generate the ghost lists after building neighborlist
-    void exchangeAtoms(std::shared_ptr<Atom>);			// Exchange Atoms to neighbors after building neighborlist
-    void communicateGhosts(std::shared_ptr<Atom>;		// communicate ghost list information each step
-    void reverseCommunicateGhosts(std::shared_ptr<Atom>);	// communicate ghost atom forces each step if using Newton 3rd
+    void setup(HS_float, std::shared_ptr<class Atom>);
+    void generateGhosts(std::shared_ptr<class Atom>);			// Generate the ghost lists after building neighborlist
+    void exchangeAtoms(std::shared_ptr<class Atom>);			// Exchange Atoms to neighbors after building neighborlist
+    void communicateGhosts(std::shared_ptr<class Atom>);		// communicate ghost list information each step
+    void reverseCommunicateGhosts(std::shared_ptr<class Atom>);	// communicate ghost atom forces each step if using Newton 3rd
 
 private:
+    std::vector<int> processorGrid;
     int rank;
     int numSwaps;				// Total number of ghost atoms communication swap
     std::vector<Swap> swap;  			// Swap data structure
 
     // The Map to store neighbor Proc IDs, this is used for exchange only
-    std::vector<std::vector<int> > neighbors(3, std::vector<int>(2));	
+    std::vector<std::vector<int> > neighbor;	
 
     // The buffer for atom exchange
     HS_float* bufferExchangeSend;

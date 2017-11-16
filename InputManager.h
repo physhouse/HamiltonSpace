@@ -1,9 +1,9 @@
 #ifndef _INPUTMANAGER_H_
 #define _INPUTMANAGER_H_
 
-namespace HamiltonSpace {
+namespace Hamilton_Space {
 
-#include <Type.h>
+#include "Type.h"
 
 struct InputManager
 {
@@ -13,7 +13,8 @@ struct InputManager
     HS_float dt;
     int      atomPerProc;
     HS_float mass;
-}
+    HS_float cutNeighbor;
+};
 
 }
 

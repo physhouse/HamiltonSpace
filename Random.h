@@ -1,10 +1,11 @@
 #ifndef _RANDOM_H_
 #define _RANDOM_H_
 
-#include <Type.h>
+#include "Type.h"
 #include <cstdlib>
+#include <cmath>
 
-namespace HamiltonSpace {
+namespace Hamilton_Space {
 
 inline HS_float randomGauss()
 {

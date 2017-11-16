@@ -1,11 +1,19 @@
-#include <HamiltonSpace.h>
-#include <Parser.h>
+#include "HamiltonSpace.h"
+#include "Atom.h"
+#include "Parser.h"
 
-using namespace HamiltonSpace {
+using namespace Hamilton_Space;
 
 HamiltonSpace::HamiltonSpace()
 {
-    input = std::make_share();
+    input = std::make_shared<InputManager>();
+    parseInput();
+    atom = std::make_shared<Atom>(input);
+    messenger = std::make_shared<Communicator>(input);
+    messenger->setup(input->cutNeighbor, atom);
+
+    atom->genInitialConfig(input);
+    exec();
 }
 
 void HamiltonSpace::parseInput()
@@ -17,8 +25,11 @@ void HamiltonSpace::parseInput()
         GET_REAL(input->beta)
         GET_REAL(input->dt)
         GET_REAL(input->mass)
+        GET_REAL(input->cutNeighbor)
     VAR_END
 }
 
-
+void HamiltonSpace::exec()
+{
+    messenger->generateGhosts(atom);
 }

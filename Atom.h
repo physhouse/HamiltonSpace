@@ -3,11 +3,11 @@
 
 #include <memory>
 #include <vector>
-#include <Atom.h>
-#include <Type.h>
-#include <InputManager.h>
+#include "Atom.h"
+#include "Type.h"
+#include "InputManager.h"
 
-namespace HamiltonSpace {
+namespace Hamilton_Space {
 
 struct Box
 {
@@ -22,10 +22,12 @@ class Atom
 public:
     Atom(InputManager* input);
     ~Atom();
+    void genInitialConfig(InputManager* input);
+    void clearGhost();
    
-    void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int* count, HS_float* buffer);
+    void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int pbcFlag, const int* count, HS_float* buffer);
     void unpackRecvAtoms(int count, HS_float* buffer);
-    void packExchange(HS_float* buffer, int count, int dimDirectionIndex);
+    void packExchange(HS_float* buffer, const int* count, int dimDirectionIndex);
     void unpackExchange(int count, HS_float* buffer);
     void swap(int i, int j);
 

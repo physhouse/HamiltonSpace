@@ -3,10 +3,11 @@
 
 struct double2 {
     double x, y;
-}
+};
+
 struct float2 {
     float x, y;
-}
+};
 
 #ifndef PRECISION
 #define PRECISION 2
@@ -24,5 +25,17 @@ typedef int HS_bigint;
 
 #define INFINITY 1e30
 #define VERYSMALL 1e-30
+
+#define MAX_ARRAY 100000
+#define EXCHANGEMAX 1000
+#define BUFFMAX 100000
+
+#define PBC_ANY_FLAG 0x1
+#define PBC_POS_X 0x2
+#define PBC_NEG_X 0x4
+#define PBC_POS_Y 0x8
+#define PBC_NEG_Y 0x10
+#define PBC_POS_Z 0x20
+#define PBC_NEG_Z 0x40
 
 #endif

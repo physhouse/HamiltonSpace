@@ -1,10 +1,10 @@
-#include <Atom.h>
-#include <InputManager.h>
-#include <Type.h>
-#include <Random.h>
+#include "Atom.h"
+#include "InputManager.h"
+#include "Type.h"
+#include "Random.h"
 #include <cmath>
 
-using namespace HamiltonSpace;
+using namespace Hamilton_Space;
 
 Atom::Atom(InputManager* input)
 {
@@ -14,8 +14,8 @@ Atom::Atom(InputManager* input)
     nall = nlocal + nghost;
 
     box.lengthx = box.lengthy = box.lengthz = input->boxLength;
-    range.resize(3);
-    for (auto item: range) item.resize(2);
+    box.range.resize(3);
+    for (auto item: box.range) item.resize(2);
 
     x.resize(MAX_ARRAY);
     v.resize(MAX_ARRAY);
@@ -33,7 +33,7 @@ Atom::~Atom()
     
 }
 
-Atom::genInitialConfig(InputManager* input)
+void Atom::genInitialConfig(InputManager* input)
 {
     /* Default: Generate Simple Cublc Lattice */
     int nperdim = std::cbrt(nlocal);
@@ -51,9 +51,9 @@ Atom::genInitialConfig(InputManager* input)
        
         /* Initial Velocity from Maxwell Boltzmann Distribution */ 
         HS_float factor = 1.0 / std::sqrt(mass * input->beta);
-        v[i][0] = factor * randGauss();
-        v[i][1] = factor * randGauss();
-        v[i][2] = factor * randGauss();
+        v[i][0] = factor * randomGauss();
+        v[i][1] = factor * randomGauss();
+        v[i][2] = factor * randomGauss();
     }
 }
 
@@ -75,7 +75,8 @@ void Atom::packSendAtoms(int first,
 {
     count = 0;
     bool pbcAny = pbcFlag & PBC_ANY_FLAG;
-    int pbcx = pbcy = pbcz = 0;
+    int pbcx, pbcy, pbcz;
+    pbcx = pbcy = pbcz = 0;
 
     if (pbcAny)
     {
@@ -126,7 +127,7 @@ void Atom::unpackRecvAtoms(int count,
 
 /* Wrap up the atoms to be exchanged in Buffer
  * Carefully deal with the holes left in current x,v,f array */
-void Atom::packExchange(HS_float* buffer.
+void Atom::packExchange(HS_float* buffer,
 			int& nsend,
 			int dimDirectionIndex)
 {
@@ -181,7 +182,7 @@ void Atom::swap(int i, int j)
 }
 
 /* Unpack the incoming atoms */
-void Atom::unpackExchange(int nrecv,
+void Atom::unpackExchange(int count,
 			  HS_float* buffer)
 {
     for (int i=0; i<count/6; i++)

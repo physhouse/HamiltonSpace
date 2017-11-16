@@ -2,24 +2,26 @@
 #define _HAMILTONSPACE_H_
 
 #include <memory>
-#include <Atom.h>
+#include "Atom.h"
+#include "Communicator.h"
+#include "InputManager.h"
 
-namespace HamiltonSpace {
+namespace Hamilton_Space {
 
 class HamiltonSpace
 {
 public:
-    HamiltonSpace(int argc, char** argv);
+    HamiltonSpace();
     ~HamiltonSpace();
-    parseInput();
-    exec();
+    void parseInput();
+    void exec();
 
 private:
-    std::shared_ptr<class InputManager> input;
-    std::shared_ptr<class Atom> atom;
+    std::shared_ptr<InputManager> input;
+    std::shared_ptr<Atom> atom;
     //std::shared_ptr<class NeighborList> neighbor;
-    std::shared_ptr<class Communication> messenger;
-    std::shared_ptr<class Integrator> manager;
+    std::shared_ptr<Communicator> messenger;
+    //std::shared_ptr<class Integrator> manager;
 };
 
 }

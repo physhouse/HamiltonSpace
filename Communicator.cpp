@@ -2,21 +2,26 @@
 // 
 // 2017-11-06
 
-#include <Communicator.h>
+#include "Communicator.h"
 #include <mpi.h>
+#include <algorithm>
+#include <cassert>
 
-using namespace HamiltonSpace;
+using namespace Hamilton_Space;
 
-Communicator::Communicator()
+Communicator::Communicator(std::shared_ptr<InputManager> input)
 {
-    HS_float cutoff = InputManager->cutNeighbor;
     bufferExchangeSend = new HS_float(EXCHANGEMAX);
     bufferExchangeRecv = new HS_float(EXCHANGEMAX);
+  
+    neighbor.resize(3);
+    processorGrid.resize(3);
+    for (int i=0; i<3; i++) neighbor[i].resize(2);
 }
 
 Communicator::~Communicator()
 {
-    for (auto &item : swaps)
+    for (auto &item : swap)
     {
         delete[] item.bufferSend;
         delete[] item.bufferRecv;
@@ -37,17 +42,17 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     // surface area of these domains reaches the minimum, under such situations,
     // the particles near the boundaries are at the lowest ratio
 
-    std::vector<int> processorGrid(3);
-    std::vector<HS_float> boxLength[3];
+    std::vector<HS_float> boxLength(3);
     boxLength[0] = atom->box.lengthx;
     boxLength[1] = atom->box.lengthy;
     boxLength[2] = atom->box.lengthz;
  
     HS_float bestSurface = INFINITY;
-    for (int nx=1; nx<=nproc; nx++)
+    for (int nx=1; nx<=nprocs; nx++)
     {
-        for (int ny=1; ny<=nproc/nx; ny++)
+        for (int ny=1; ny<=nprocs/nx; ny++)
         {
+            int nz = nprocs / nx / ny;
             HS_float surf = boxLength[0] * boxLength[1] / nx / ny + boxLength[0] * boxLength[2] / nx / nz 
                           + boxLength[1] * boxLength[2] / ny / nz;
 
@@ -62,7 +67,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
         }
     }
     
-    assert(processorGrid[0]*processorGrid[1]*processorGird[2] == nprocs);
+    assert(processorGrid[0]*processorGrid[1]*processorGrid[2] == nprocs);
     printf("[Communicator] Grid Partitioning Initialized (nx, ny, nz) = (%d, %d, %d)\n", 
 	   processorGrid[0], processorGrid[1], processorGrid[2]);
 
@@ -73,7 +78,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     // int MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[],
     //                     const int periods[], int reorder, MPI_Comm *comm_cart)
     MPI_Comm GridWorld;
-    bool periods[3] = {true, true, true};
+    int periods[3] = {1, 1, 1};
     bool reorder = false;
     MPI_Cart_create(MPI_COMM_WORLD, 3, processorGrid.data(), periods, reorder, &GridWorld);
 
@@ -112,8 +117,8 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     // Determining the geometric range of current processor
     for (int idim=0; idim<3; idim++)
     {
-        atom->box.xlo = my3DLocation[idim] * boxLength[idim] / processorGrid[idim];
-        atom->box.xhi = (my3DLocation[idim]+1) * boxLength[idim] / processorGrid[idim];
+        atom->box.range[idim][0] = my3DLocation[idim] * boxLength[idim] / processorGrid[idim];
+        atom->box.range[idim][1] = (my3DLocation[idim]+1) * boxLength[idim] / processorGrid[idim];
     }
 
     // Step 3: Generate the send and recv processor IDS
@@ -179,7 +184,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
                 sourceSlab = my3DLocation[idim] + j / 2;
 
                 lo = sourceSlab * boxLength[idim] / processorGrid[idim];
-                hi = std::min(atom.box.lo[idim] + cutoff, (sourceSlab + 1) * boxLength[idim] / processorGrid[idim]);
+                hi = std::min(atom->box.range[idim][0] + cutoff, (sourceSlab + 1) * boxLength[idim] / processorGrid[idim]);
                 
                 if (my3DLocation[idim] == 0)
                 {
@@ -194,7 +199,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
                 swap[iSwap].sendToProc = neighbor[idim][1];
                 swap[iSwap].recvFromProc = neighbor[idim][1];
                 sourceSlab = my3DLocation[idim] - j / 2;
-                lo = std::max(atom.box.hi[idim] - cutoff, sourceSlab * boxLength[idim] / processorGrid[idim]);
+                lo = std::max(atom->box.range[idim][1] - cutoff, sourceSlab * boxLength[idim] / processorGrid[idim]);
                 hi = (sourceSlab + 1) * boxLength[idim] / processorGrid[idim];
 
                 if (my3DLocation[idim] == processorGrid[idim] - 1)
@@ -214,7 +219,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     }
 
     // Total number of Swaps need to be performed
-    nSwaps = iSwap;
+    numSwaps = iSwap;
          
 }
 
@@ -231,13 +236,13 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 
     for (const auto& item : swap)
     {
-        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlag, &item.sendNum, item.bufferSend);
+        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, &item.sendNum, item.bufferSend);
        
-        MPI_Send(&item.sendNum, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
-        MPI_Recv(&item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
+        MPI_Send((void *)item.sendNum, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
+        MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
        
         MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
-        MPI_Send(item.bufferSend, sendNum[iSwap], MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
+        MPI_Send(item.bufferSend, item.sendNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
       
         MPI_Wait(&request, &status); 
 
@@ -291,10 +296,10 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
     }
 }
 
-void Communicator::communicate()
-{
-}
-
+//void Communicator::communicate()
+//{
+//}
+//
 
 void Communicator::communicateGhosts(std::shared_ptr<Atom> atom)
 {
@@ -302,7 +307,5 @@ void Communicator::communicateGhosts(std::shared_ptr<Atom> atom)
 
 void Communicator::reverseCommunicateGhosts(std::shared_ptr<Atom> atom)
 {
-}
-
 }
 
