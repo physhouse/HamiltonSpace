@@ -11,8 +11,8 @@ using namespace Hamilton_Space;
 
 Communicator::Communicator(std::shared_ptr<InputManager> input)
 {
-    bufferExchangeSend = new HS_float(EXCHANGEMAX);
-    bufferExchangeRecv = new HS_float(EXCHANGEMAX);
+    bufferExchangeSend = new HS_float [EXCHANGEMAX];
+    bufferExchangeRecv = new HS_float [EXCHANGEMAX];
   
     neighbor.resize(3);
     processorGrid.resize(3);
@@ -21,16 +21,15 @@ Communicator::Communicator(std::shared_ptr<InputManager> input)
 
 Communicator::~Communicator()
 {
-    printf("entering\n");
     delete[] bufferExchangeSend;
     delete[] bufferExchangeRecv;
-    printf("here\n");
-
-    for (auto &item : swap)
+    
+    for (const auto& item : swap)
     {
         delete[] item.bufferSend;
         delete[] item.bufferRecv;
     }
+    printf("[Communicator] Communicator object get desctructed\n");
 }
 
 void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
@@ -141,8 +140,8 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     printf("[Communicator] Number of Swaps = %d\n", maxSwap);
     for (auto &item : swap)
     {
-        item.bufferSend = new HS_float(BUFFMAX);
-        item.bufferRecv = new HS_float(BUFFMAX);
+        item.bufferSend = new HS_float [BUFFMAX];
+        item.bufferRecv = new HS_float [BUFFMAX];
     }
     
     printf("[Communicator] Buffer Allocation finished\n");
@@ -248,6 +247,7 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
     {
         //printf("%d %d %lf %lf\n", first, last, item.slablo, item.slabhi);
         atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, (int *)&(item.sendNum), item.bufferSend);
+  
         //MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
         MPI_Irecv((void *)&(item.recvNum), 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
         MPI_Send((void *)&(item.sendNum), 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
@@ -257,6 +257,7 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
         MPI_Send(item.bufferSend, item.sendNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
       
         MPI_Wait(&request, &status); 
+        //for (int i=0; i<5; i++) printf("--%lf--\n", item.bufferSend[i]);
 
         atom->unpackRecvAtoms(item.recvNum, item.bufferRecv);
 
@@ -264,6 +265,7 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
         first = 0;
         last = last + item.recvNum;
     }
+
 } 
 
 /* Routine to migrate atoms to neighboring proc */
@@ -307,6 +309,7 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
             atom->unpackExchange(nrecv, bufferExchangeRecv);
         }
     }
+
 }
 
 //void Communicator::communicate()

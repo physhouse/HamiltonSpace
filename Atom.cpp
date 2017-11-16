@@ -32,7 +32,7 @@ Atom::Atom(std::shared_ptr<InputManager> input)
 
 Atom::~Atom()
 {
-    printf("Deleting Atom\n");
+    printf("[Atom] Atom object get destructed\n");
 }
 
 void Atom::genInitialConfig(std::shared_ptr<InputManager> input)

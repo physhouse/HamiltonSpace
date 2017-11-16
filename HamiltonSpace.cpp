@@ -16,7 +16,6 @@ HamiltonSpace::HamiltonSpace()
 
     atom->genInitialConfig(input);
     exec();
-    printf("finished\n");
 }
 
 HamiltonSpace::~HamiltonSpace()
