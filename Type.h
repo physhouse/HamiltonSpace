@@ -28,7 +28,7 @@ typedef int HS_bigint;
 
 #define MAX_ARRAY 100000
 #define EXCHANGEMAX 1000
-#define BUFFMAX 100000
+#define BUFFMAX 10000
 
 #define PBC_ANY_FLAG 0x1
 #define PBC_POS_X 0x2

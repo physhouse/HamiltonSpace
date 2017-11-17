@@ -20,7 +20,7 @@ HamiltonSpace::HamiltonSpace()
 
 HamiltonSpace::~HamiltonSpace()
 {
-    //printf("deleting HamiltonSpace\n");
+    printf("[HamiltonSpace] HamiltonSpace object get destructed\n");
 }
 
 void HamiltonSpace::parseInput()

@@ -121,7 +121,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     {
         atom->box.range[idim][0] = my3DLocation[idim] * boxLength[idim] / processorGrid[idim];
         atom->box.range[idim][1] = (my3DLocation[idim]+1) * boxLength[idim] / processorGrid[idim];
-        //printf("%lf %lf\n", atom->box.range[idim][0], atom->box.range[idim][1]);
+        printf("BOX[%d]:%lf %lf\n", rank, atom->box.range[idim][0], atom->box.range[idim][1]);
     }
     printf("[Communicator] Spatial Domain Boundary finished\n");
 
@@ -243,15 +243,21 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
   
     int nsend, nrecv;
 
-    for (const auto& item : swap)
+    for (auto& item : swap)
     {
         //printf("%d %d %lf %lf\n", first, last, item.slablo, item.slabhi);
         atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, (int *)&(item.sendNum), item.bufferSend);
-  
+        nsend = item.sendNum;
         //MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
-        MPI_Irecv((void *)&(item.recvNum), 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
-        MPI_Send((void *)&(item.sendNum), 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
-        printf("%d %d\n", item.sendNum, item.recvNum); 
+        MPI_Barrier(MPI_COMM_WORLD);
+        //MPI_Irecv((void *)&(item.recvNum), 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
+        //MPI_Send((void *)&(item.sendNum), 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
+        MPI_Irecv(&nrecv, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
+        MPI_Send(&nsend, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
+        MPI_Wait(&request, &status); 
+        item.recvNum = nrecv;
+
+        printf("[%d]:%d %d lo %lf hi %lf sendTo %d recv %d\n", rank, item.sendNum, item.recvNum, item.slablo, item.slabhi, item.sendToProc, item.recvFromProc); 
        
         MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
         MPI_Send(item.bufferSend, item.sendNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
