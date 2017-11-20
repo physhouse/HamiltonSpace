@@ -30,6 +30,8 @@ public:
     void unpackExchange(int count, HS_float* buffer);
     void swap(int i, int j);
 
+    void printFrame();  // For Test
+
 public:
     int nall;		// total number of atoms
     int nlocal, nghost; // nlocal->number of host atoms, nghost->number of ghost atoms

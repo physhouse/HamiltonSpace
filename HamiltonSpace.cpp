@@ -39,4 +39,5 @@ void HamiltonSpace::parseInput()
 void HamiltonSpace::exec()
 {
     messenger->generateGhosts(atom);
+    atom->printFrame();
 }

@@ -57,7 +57,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
             HS_float surf = boxLength[0] * boxLength[1] / nx / ny + boxLength[0] * boxLength[2] / nx / nz 
                           + boxLength[1] * boxLength[2] / ny / nz;
 
-            if (surf < bestSurface)
+            if (surf < bestSurface && nx*ny*nz==nprocs)
             {
                 processorGrid[0] = nx;
                 processorGrid[1] = ny;
@@ -203,7 +203,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
             else // Second-half: Receive from left and send to right
             {
                 swap[iSwap].sendToProc = neighbor[idim][1];
-                swap[iSwap].recvFromProc = neighbor[idim][1];
+                swap[iSwap].recvFromProc = neighbor[idim][0];
                 sourceSlab = my3DLocation[idim] - j / 2;
                 lo = std::max(atom->box.range[idim][1] - cutoff, sourceSlab * boxLength[idim] / processorGrid[idim]);
                 hi = (sourceSlab + 1) * boxLength[idim] / processorGrid[idim];

@@ -1,4 +1,4 @@
-input->boxLength=100.0
+input->boxLength=200.0
 input->beta=1.0
 input->nsteps=1
 input->dt=0.1

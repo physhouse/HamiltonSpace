@@ -2,6 +2,7 @@
 #include "InputManager.h"
 #include "Type.h"
 #include "Random.h"
+#include "mpi.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -39,7 +40,8 @@ void Atom::genInitialConfig(std::shared_ptr<InputManager> input)
 {
     /* Default: Generate Simple Cublc Lattice */
     int nperdim = std::cbrt(nlocal);
-    HS_float gridSize = box.lengthx / nperdim;
+    //HS_float gridSize = box.lengthx / nperdim;
+    HS_float gridSize = (box.range[0][1] - box.range[0][0]) / nperdim;
     int nx, ny, nz;
     for (int i=0; i<nlocal; i++)
     {
@@ -123,9 +125,9 @@ void Atom::unpackRecvAtoms(int count,
 {
     for (int i=0; i<count/3; i++)
     {
-        x[nghost + i][0] = buffer[3*i];
-        x[nghost + i][1] = buffer[3*i + 1];
-        x[nghost + i][2] = buffer[3*i + 2];
+        x[nall + i][0] = buffer[3*i];
+        x[nall + i][1] = buffer[3*i + 1];
+        x[nall + i][2] = buffer[3*i + 2];
     }
     nghost += count/3;
     nall += count/3;
@@ -203,4 +205,19 @@ void Atom::unpackExchange(int count,
     }
     nlocal += count/6;
     nall += count/6;
+}
+
+void Atom::printFrame()
+{
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    char filename[100];
+    sprintf(filename, "traj_p%d.dat", me);
+    FILE* fp = fopen(filename, "w");
+    fprintf(fp,"nlocal = %d nghost = %d\n", nlocal, nghost);
+    for (int i=0; i<nall; i++)
+    {
+        fprintf(fp, "%lf %lf %lf %d\n", x[i][0], x[i][1], x[i][2], i<nlocal);
+    }
+    fclose(fp);
 }
