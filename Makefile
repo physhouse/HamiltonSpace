@@ -1,4 +1,4 @@
-OPT     = -std=c++0x -O3 -g
+OPT     = -std=c++0x -O2
 CC      = mpiicpc $(OPT)
 
 hs_mpi: main.o Atom.o Communicator.o HamiltonSpace.o

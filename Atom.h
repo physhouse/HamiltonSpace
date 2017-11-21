@@ -29,8 +29,10 @@ public:
     void packExchange(HS_float* buffer, int* count, int dimDirectionIndex);
     void unpackExchange(int count, HS_float* buffer);
     void swap(int i, int j);
-
+ 
+    void enforcePBC();
     void printFrame();  // For Test
+    void propagate();   // For Test
 
 public:
     int nall;		// total number of atoms

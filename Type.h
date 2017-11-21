@@ -27,7 +27,7 @@ typedef int HS_bigint;
 #define VERYSMALL 1e-30
 
 #define MAX_ARRAY 100000
-#define EXCHANGEMAX 1000
+#define EXCHANGEMAX 10000
 #define BUFFMAX 10000
 
 #define PBC_ANY_FLAG 0x1

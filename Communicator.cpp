@@ -178,7 +178,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
 
     int iSwap = 0;
     int sourceSlab;	
-    int lo, hi;
+    HS_float lo, hi;
     for (int idim = 0; idim < 3; idim++)
     {
         for (int j = 0; j < 2 * need[idim]; j++)
@@ -235,8 +235,8 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 {
     atom->clearGhost(); // Clear up the ghost atom lists
     
-    int first = 0;
-    int last = atom->nlocal;
+    int first = 0;		// The first atom need to be examined
+    int last = atom->nlocal;	// The last atom need to be examined
     int count;
     MPI_Status status;
     MPI_Request request;
@@ -249,7 +249,7 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
         atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, (int *)&(item.sendNum), item.bufferSend);
         nsend = item.sendNum;
         //MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
-        MPI_Barrier(MPI_COMM_WORLD);
+        //MPI_Barrier(MPI_COMM_WORLD);
         //MPI_Irecv((void *)&(item.recvNum), 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
         //MPI_Send((void *)&(item.sendNum), 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
         MPI_Irecv(&nrecv, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
@@ -257,19 +257,18 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
         MPI_Wait(&request, &status); 
         item.recvNum = nrecv;
 
-        printf("[%d]:%d %d lo %lf hi %lf sendTo %d recv %d\n", rank, item.sendNum, item.recvNum, item.slablo, item.slabhi, item.sendToProc, item.recvFromProc); 
-       
+        printf("[%d]:%d %d lo %lf hi %lf sendTo %d recv %d nlocal %d nghost %d\n", rank, item.sendNum, item.recvNum, item.slablo, item.slabhi, item.sendToProc, item.recvFromProc, atom->nlocal, atom->nghost);
+
         MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
         MPI_Send(item.bufferSend, item.sendNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
       
         MPI_Wait(&request, &status); 
-        //for (int i=0; i<5; i++) printf("--%lf--\n", item.bufferSend[i]);
 
         atom->unpackRecvAtoms(item.recvNum, item.bufferRecv);
 
         //first = last;
         first = 0;
-        last = last + item.recvNum;
+        last = last + item.recvNum/3;
     }
 
 } 
@@ -283,6 +282,7 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
     int nsend, nrecv;
     for (int idim = 0; idim < 3; idim++)
     {
+        printf("Dealing with Dim %d\n", idim+1);
         if (processorGrid[idim] > 1)
         {
             /* Packing strategy:
@@ -295,13 +295,16 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
             MPI_Send(&nsend, 1, MPI_INT, neighbor[idim][0], 0, MPI_COMM_WORLD);
             MPI_Recv(&nrecv, 1, MPI_INT, neighbor[idim][1], 0, MPI_COMM_WORLD, &status);
 
+
             MPI_Irecv(bufferExchangeRecv, nrecv, MPI_DOUBLE, neighbor[idim][1], 0, MPI_COMM_WORLD, &request);
             MPI_Send(bufferExchangeSend, nsend, MPI_DOUBLE, neighbor[idim][0], 0, MPI_COMM_WORLD);
+            MPI_Wait(&request, &status); 
 
             /* Unpacking strategy:
              * Just check the incoming atoms and append it at the end, nlocal += nrecv
              */
             atom->unpackExchange(nrecv, bufferExchangeRecv);
+            printf("[Exchange%d]: send %d to %d recv %d from %d nlocal %d\n", rank, nsend, neighbor[idim][0], nrecv, neighbor[idim][1], atom->nlocal);
           
             // Round 2: Send to right
             atom->packExchange(bufferExchangeSend, &nsend, 2*idim + 1);
@@ -309,12 +312,17 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
             MPI_Send(&nsend, 1, MPI_INT, neighbor[idim][1], 0, MPI_COMM_WORLD);
             MPI_Recv(&nrecv, 1, MPI_INT, neighbor[idim][0], 0, MPI_COMM_WORLD, &status);
 
+            printf("[Exchange%d]: send %d to %d recv %d from %d DIM %d\n", rank, nsend, neighbor[idim][1], nrecv, neighbor[idim][0], idim+1);
+            MPI_Barrier(MPI_COMM_WORLD);
+
             MPI_Irecv(bufferExchangeRecv, nrecv, MPI_DOUBLE, neighbor[idim][0], 0, MPI_COMM_WORLD, &request);
             MPI_Send(bufferExchangeSend, nsend, MPI_DOUBLE, neighbor[idim][1], 0, MPI_COMM_WORLD);
+            MPI_Wait(&request, &status); 
 
             atom->unpackExchange(nrecv, bufferExchangeRecv);
         }
     }
+    MPI_Barrier(MPI_COMM_WORLD);
 
 }
 

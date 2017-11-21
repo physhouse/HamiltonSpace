@@ -40,21 +40,25 @@ void Atom::genInitialConfig(std::shared_ptr<InputManager> input)
 {
     /* Default: Generate Simple Cublc Lattice */
     int nperdim = std::cbrt(nlocal);
-    //HS_float gridSize = box.lengthx / nperdim;
-    HS_float gridSize = (box.range[0][1] - box.range[0][0]) / nperdim;
+
+    std::vector<HS_float> gridSize(3);
+    for (int idim = 0; idim < 3; idim++) {
+        gridSize[idim] = (box.range[idim][1] - box.range[idim][0]) / nperdim;
+    }
+
     int nx, ny, nz;
+    HS_float factor = 1.0 / std::sqrt(mass * input->beta);
     for (int i=0; i<nlocal; i++)
     {
         nz = i / nperdim / nperdim;
         ny = (i - nz * nperdim * nperdim) / nperdim;
         nx = i % nperdim;
 
-        x[i][0] = (nx + 0.5) * gridSize + box.range[0][0];
-        x[i][1] = (ny + 0.5) * gridSize + box.range[1][0];
-        x[i][2] = (nz + 0.5) * gridSize + box.range[2][0];
+        x[i][0] = (nx + 0.5) * gridSize[0] + box.range[0][0];
+        x[i][1] = (ny + 0.5) * gridSize[1] + box.range[1][0];
+        x[i][2] = (nz + 0.5) * gridSize[2] + box.range[2][0];
        
         /* Initial Velocity from Maxwell Boltzmann Distribution */ 
-        HS_float factor = 1.0 / std::sqrt(mass * input->beta);
         v[i][0] = factor * randomGauss();
         v[i][1] = factor * randomGauss();
         v[i][2] = factor * randomGauss();
@@ -146,17 +150,17 @@ void Atom::packExchange(HS_float* buffer,
 
     while (i < nlocal)
     {
-        bool exchange_down = (direction == 0) && (x[i][dim] < box.range[dim][direction]);
-        bool exchange_up = (direction == 1) && (x[i][dim] > box.range[dim][direction]);
+        bool exchange_down = (direction == 0) && (x[i][dim] < box.range[dim][0]);
+        bool exchange_up = (direction == 1) && (x[i][dim] > box.range[dim][1]);
         if (exchange_down || exchange_up)
         {
             
-            buffer[*nsend++] = x[i][0];
-            buffer[*nsend++] = x[i][1];
-            buffer[*nsend++] = x[i][2];
-            buffer[*nsend++] = v[i][0];
-            buffer[*nsend++] = v[i][1];
-            buffer[*nsend++] = v[i][2];
+            buffer[(*nsend)++] = x[i][0];
+            buffer[(*nsend)++] = x[i][1];
+            buffer[(*nsend)++] = x[i][2];
+            buffer[(*nsend)++] = v[i][0];
+            buffer[(*nsend)++] = v[i][1];
+            buffer[(*nsend)++] = v[i][2];
           
             /* Exchange the information of x[i] with x[nlocal-1] then nlocal-- 
              * Discarding the i atom */
@@ -174,18 +178,21 @@ void Atom::packExchange(HS_float* buffer,
 /* swap the information of atom i and j */
 void Atom::swap(int i, int j)
 {
-    int temp;
+    //HS_float temp;  
+    // Super weired!!! Compiler Need to use optimize -O2 to make this function behave correctly
     for (int dim = 0; dim < 3; dim++)
     {
-        temp = x[i][dim];
+        HS_float tempx = x[i][dim];
         x[i][dim] = x[j][dim];
-        x[j][dim] = x[i][dim];
-        temp = v[i][dim];
+        x[j][dim] = tempx;
+
+        HS_float tempv = v[i][dim];
         v[i][dim] = v[j][dim];
-        v[j][dim] = v[i][dim];
-        temp = f[i][dim];
+        v[j][dim] = tempv;
+
+        HS_float tempf = f[i][dim];
         f[i][dim] = f[j][dim];
-        f[j][dim] = f[i][dim];
+        f[j][dim] = tempf;
     }
 }
 
@@ -207,6 +214,21 @@ void Atom::unpackExchange(int count,
     nall += count/6;
 }
 
+// To test the parallel Implementation
+//
+void Atom::enforcePBC()
+{
+    for (int i=0; i<nlocal; i++)
+    {
+        if (x[i][0] < 0.0) x[i][0] += box.lengthx;
+        if (x[i][0] > box.lengthx) x[i][0] -= box.lengthx;
+        if (x[i][1] < 0.0) x[i][1] += box.lengthy;
+        if (x[i][1] > box.lengthy) x[i][1] -= box.lengthy;
+        if (x[i][2] < 0.0) x[i][2] += box.lengthz;
+        if (x[i][2] > box.lengthz) x[i][2] -= box.lengthz;
+    }
+}
+
 void Atom::printFrame()
 {
     int me;
@@ -221,3 +243,14 @@ void Atom::printFrame()
     }
     fclose(fp);
 }
+
+void Atom::propagate()
+{
+    for (int i=0; i<nlocal; i++)
+    {
+        x[i][0] = x[i][0] + v[i][0] * 0.1;
+        x[i][1] = x[i][1] + v[i][1] * 0.1;
+        x[i][2] = x[i][2] + v[i][2] * 0.1;
+    }
+}
+
