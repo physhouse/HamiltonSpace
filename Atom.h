@@ -28,6 +28,8 @@ public:
     void unpackRecvAtoms(int count, HS_float* buffer);
     void packExchange(HS_float* buffer, int* count, int dimDirectionIndex);
     void unpackExchange(int count, HS_float* buffer);
+    void packCommunicateGhosts(int count, int dim, int pbcFlag, HS_float* buffer, int* sendlist);
+    void unpackCommunicateGhosts(int count, int startIndex, HS_float* buffer);
     void swap(int i, int j);
  
     void enforcePBC();

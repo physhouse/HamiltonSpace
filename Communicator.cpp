@@ -28,6 +28,7 @@ Communicator::~Communicator()
     {
         delete[] item.bufferSend;
         delete[] item.bufferRecv;
+        delete[] item.sendList;
     }
     printf("[Communicator] Communicator object get desctructed\n");
 }
@@ -142,6 +143,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     {
         item.bufferSend = new HS_float [BUFFMAX];
         item.bufferRecv = new HS_float [BUFFMAX];
+        item.sendList = new int [BUFFMAX];
     }
     
     printf("[Communicator] Buffer Allocation finished\n");
@@ -245,13 +247,9 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 
     for (auto& item : swap)
     {
-        //printf("%d %d %lf %lf\n", first, last, item.slablo, item.slabhi);
-        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, (int *)&(item.sendNum), item.bufferSend);
+        atom->packSendAtoms(first, last, item.dim, item.slablo, item.slabhi, item.pbcFlags, (int *)&(item.sendNum), item.bufferSend, item.sendList);
         nsend = item.sendNum;
-        //MPI_Recv((void *)item.recvNum, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &status);
-        //MPI_Barrier(MPI_COMM_WORLD);
-        //MPI_Irecv((void *)&(item.recvNum), 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
-        //MPI_Send((void *)&(item.sendNum), 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
+
         MPI_Irecv(&nrecv, 1, MPI_INT, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
         MPI_Send(&nsend, 1, MPI_INT, item.sendToProc, 0, MPI_COMM_WORLD);
         MPI_Wait(&request, &status); 
@@ -266,11 +264,16 @@ void Communicator::generateGhosts(std::shared_ptr<Atom> atom)
 
         atom->unpackRecvAtoms(item.recvNum, item.bufferRecv);
 
-        //first = last;
         first = 0;
         last = last + item.recvNum/3;
     }
 
+    // Generate the startRecvIndex for forward Communication, Exclusive Scan
+    swap[0].recvStartIndex = atom->nlocal;
+    for (int i = 1; i < numSwaps; i++)
+    {
+        swap[i].recvStartIndex = swap[i-1].recvStartIndex + swap[i-1].recvNum/3;
+    }
 } 
 
 /* Routine to migrate atoms to neighboring proc */
@@ -322,17 +325,30 @@ void Communicator::exchangeAtoms(std::shared_ptr<Atom> atom)
             atom->unpackExchange(nrecv, bufferExchangeRecv);
         }
     }
-    MPI_Barrier(MPI_COMM_WORLD);
 
 }
 
-//void Communicator::communicate()
-//{
-//}
-//
-
+/* Update the ghost particle coordinates for each time step
+ * utilizing all the information when initializing the ghost atom lists
+ * */
 void Communicator::communicateGhosts(std::shared_ptr<Atom> atom)
 {
+    MPI_Status status;
+    MPI_Request request;
+  
+    for (auto& item : swap)
+    {
+        /* Attention, by contract, the sendNum and recvNum are all by number of double elements
+         * should divide by 3 to get the number of atoms to be sent or received */
+        atom->packCommunicateGhosts(item.sendNum/3, item.dim, item.pbcFlags, item.bufferSend, item.sendList);
+
+        MPI_Irecv(item.bufferRecv, item.recvNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
+        MPI_Send(item.bufferSend, item.sendNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
+      
+        MPI_Wait(&request, &status); 
+
+        atom->unpackCommunicateGhosts(item.recvNum/3, item.recvStartIndex, item.bufferRecv);
+    }
 }
 
 void Communicator::reverseCommunicateGhosts(std::shared_ptr<Atom> atom)

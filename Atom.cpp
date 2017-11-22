@@ -79,12 +79,15 @@ void Atom::packSendAtoms(int first,
 			 HS_float hi,
                          int pbcFlag,
 			 int* count,
-			 HS_float* bufferSend)
+			 HS_float* bufferSend
+			 HS_float* sendList)
 {
     *count = 0;
     bool pbcAny = pbcFlag & PBC_ANY_FLAG;
     int pbcx, pbcy, pbcz;
     pbcx = pbcy = pbcz = 0;
+    
+    int nsend = 0; 
     //printf("%d %d pbcAny = %d\n", first, last, pbcAny);
 
     if (pbcAny)
@@ -102,6 +105,7 @@ void Atom::packSendAtoms(int first,
         {
             if (x[i][dim] < hi && x[i][dim] > lo)
             {
+                sendList[nsend++] = i;
                 bufferSend[(*count)++] = x[i][0] + pbcx * box.lengthx;
                 bufferSend[(*count)++] = x[i][1] + pbcy * box.lengthy;
                 bufferSend[(*count)++] = x[i][2] + pbcz * box.lengthz;
@@ -115,6 +119,7 @@ void Atom::packSendAtoms(int first,
         {
             if (x[i][dim] < hi && x[i][dim] > lo)
             {
+                sendList[nsend++] = i;
                 bufferSend[(*count)++] = x[i][0];
                 bufferSend[(*count)++] = x[i][1];
                 bufferSend[(*count)++] = x[i][2];
@@ -212,6 +217,53 @@ void Atom::unpackExchange(int count,
     }
     nlocal += count/6;
     nall += count/6;
+}
+
+void Atom::packCommunicateGhosts(int count, int dim, int pbcFlag, HS_float* buffer, int* sendlist)
+{
+    bool pbcAny = pbcFlag & PBC_ANY_FLAG;
+    int pbcx, pbcy, pbcz;
+    pbcx = pbcy = pbcz = 0;
+
+    int nsend = 0;
+    
+    if (pbcAny)
+    {
+        if (pbcFlag & PBC_POS_X) pbcx = 1;
+        else if (pbcFlag & PBC_NEG_X) pbcx = -1;
+        if (pbcFlag & PBC_POS_Y) pbcy = 1;
+        else if (pbcFlag & PBC_NEG_Y) pbcy = -1;
+        if (pbcFlag & PBC_POS_Z) pbcz = 1;
+        else if (pbcFlag & PBC_NEG_Z) pbcz = -1;
+
+        for (int j = 0; j <= count; j++)
+        {
+            int i = sendList[j];
+            bufferSend[nsend++] = x[i][0] + pbcx * box.lengthx;
+            bufferSend[nsend++] = x[i][1] + pbcy * box.lengthy;
+            bufferSend[nsend++] = x[i][2] + pbcz * box.lengthz;
+        }
+    }
+    else
+    {
+        for (int j = 0; j <= count; j++)
+        {
+            int i = sendList[j];
+            bufferSend[nsend++] = x[i][0];
+            bufferSend[nsend++] = x[i][1];
+            bufferSend[nsend++] = x[i][2];
+        }
+    }
+}
+
+void Atom::unpackCommunicateGhosts(int count, int startIndex, HS_float* buffer)
+{
+    for (int i=0; i<count; i++)
+    {
+        x[startIndex + i][0] = buffer[3*i];
+        x[startIndex + i][1] = buffer[3*i + 1];
+        x[startIndex + i][2] = buffer[3*i + 2];
+    }
 }
 
 // To test the parallel Implementation

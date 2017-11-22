@@ -27,6 +27,9 @@ struct Swap
 
     HS_float* bufferSend;
     HS_float* bufferRecv;
+
+    int* sendList;
+    int recvStartIndex;
 };
 
 class Communicator
