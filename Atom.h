@@ -24,12 +24,15 @@ public:
     void genInitialConfig(std::shared_ptr<InputManager> input);
     void clearGhost();
    
-    void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int pbcFlag, int* count, HS_float* buffer);
+    void packSendAtoms(int first, int last, int dim, HS_float lo, HS_float hi, int pbcFlag, int* count, HS_float* buffer, int* sendList);
     void unpackRecvAtoms(int count, HS_float* buffer);
     void packExchange(HS_float* buffer, int* count, int dimDirectionIndex);
     void unpackExchange(int count, HS_float* buffer);
     void packCommunicateGhosts(int count, int dim, int pbcFlag, HS_float* buffer, int* sendlist);
     void unpackCommunicateGhosts(int count, int startIndex, HS_float* buffer);
+    void packReverseCommunication(int count, int startIndex, HS_float* buffer);
+    void unpackReverseCommunication(int count, int* sendlist, HS_float* buffer);
+
     void swap(int i, int j);
  
     void enforcePBC();

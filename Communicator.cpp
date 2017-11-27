@@ -351,7 +351,23 @@ void Communicator::communicateGhosts(std::shared_ptr<Atom> atom)
     }
 }
 
+/* Backward communication of ghost particle forces, Implementation requires the reversed data structures
+ * This is only used when the Newton's third law is applied when evaluating the pairwise forces
+ * Otherwise just turned it off */
 void Communicator::reverseCommunicateGhosts(std::shared_ptr<Atom> atom)
 {
+    MPI_Status status;
+    MPI_Request request;
+    for (auto& item : swap)
+    {
+        atom->packReverseCommunication(item.recvNum/3, item.recvStartIndex, item.bufferSend);
+
+        MPI_Irecv(item.bufferRecv, item.sendNum, MPI_DOUBLE, item.recvFromProc, 0, MPI_COMM_WORLD, &request);
+        MPI_Send(item.bufferSend, item.recvNum, MPI_DOUBLE, item.sendToProc, 0, MPI_COMM_WORLD);
+
+        MPI_Wait(&request, &status);
+ 
+        atom->unpackReverseCommunication(item.sendNum, item.sendList, item.bufferRecv);
+    }
 }
 

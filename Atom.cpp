@@ -79,8 +79,8 @@ void Atom::packSendAtoms(int first,
 			 HS_float hi,
                          int pbcFlag,
 			 int* count,
-			 HS_float* bufferSend
-			 HS_float* sendList)
+			 HS_float* bufferSend,
+			 int* sendList)
 {
     *count = 0;
     bool pbcAny = pbcFlag & PBC_ANY_FLAG;
@@ -219,7 +219,11 @@ void Atom::unpackExchange(int count,
     nall += count/6;
 }
 
-void Atom::packCommunicateGhosts(int count, int dim, int pbcFlag, HS_float* buffer, int* sendlist)
+void Atom::packCommunicateGhosts(int count, 
+				 int dim, 
+				 int pbcFlag, 
+				 HS_float* bufferSend, 
+				 int* sendList)
 {
     bool pbcAny = pbcFlag & PBC_ANY_FLAG;
     int pbcx, pbcy, pbcz;
@@ -256,13 +260,40 @@ void Atom::packCommunicateGhosts(int count, int dim, int pbcFlag, HS_float* buff
     }
 }
 
-void Atom::unpackCommunicateGhosts(int count, int startIndex, HS_float* buffer)
+void Atom::unpackCommunicateGhosts(int count, 
+				   int startIndex, 
+				   HS_float* buffer)
 {
     for (int i=0; i<count; i++)
     {
         x[startIndex + i][0] = buffer[3*i];
         x[startIndex + i][1] = buffer[3*i + 1];
         x[startIndex + i][2] = buffer[3*i + 2];
+    }
+}
+
+void Atom::packReverseCommunication(int count, 
+				    int startIndex, 
+                                    HS_float* buffer)
+{
+    for (int i=0; i<count; i++)
+    {
+        buffer[3*i]   = f[startIndex + i][0];
+        buffer[3*i+1] = f[startIndex + i][1];
+        buffer[3*i+2] = f[startIndex + i][2];
+    }
+}
+
+void Atom::unpackReverseCommunication(int count, 
+				      int* sendList, 
+				      HS_float* buffer)
+{
+    for (int i=0; i<count; i++)
+    {
+        int j = sendList[i];
+        f[j][0] += buffer[3*i];
+        f[j][1] += buffer[3*i+1];
+        f[j][2] += buffer[3*i+2];
     }
 }
 
