@@ -42,6 +42,8 @@ void HamiltonSpace::exec()
     for (int i=0; i<100; i++)
     {
        atom->propagate();
+       messenger->communicateGhosts(atom);
+       messenger->reverseCommunicateGhosts(atom);
     }
     messenger->exchangeAtoms(atom);
     atom->enforcePBC();
