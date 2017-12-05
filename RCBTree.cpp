@@ -75,7 +75,7 @@ void RCBTree:buildDistributedRCBTree()
         // based on the assumtion that procs owns same number of atoms
         cutMiddle = (procMiddle - procLow) * (upperBound[cutDim] - lowerBound[cutDim]) / (procHigh - procLow + 1);
 
-        // Build the MiddleCut information
+        // The MiddleCut information
         MiddleCut midme, mid;
     
         while (1)
@@ -85,7 +85,8 @@ void RCBTree:buildDistributedRCBTree()
             midme.minUpper = VERY_BIG_FLOAT;
             midme.countLower = 0;
             midme.countUpper = 0;
-
+         
+            int indexLower, indexUpper;
             for (int i=0; i<numParticles; i++)
             {
                 HS_float x = particle[i][cutDim];
@@ -101,6 +102,7 @@ void RCBTree:buildDistributedRCBTree()
                     {
                         midme.maxLower = x;
                         midme.countLower = 1;
+                        indexLower = i;
                     }
                 }
                 else
@@ -115,6 +117,7 @@ void RCBTree:buildDistributedRCBTree()
                     {
                         midme.minUpper = x;
                         midme.countUpper = 1;
+                        indexUpper = i; 
                     }
                 } 
             }
@@ -132,9 +135,19 @@ void RCBTree:buildDistributedRCBTree()
                 {
                     if (mid.totalLower + mid.countLower < targetLower)
                     {
-                        if (rank == midme.proc) // TODO: 
+                        if (rank == midme.procUpper)
+                        {
+                            mark[indexUpper] = 0; // In the upper Ranks, mark the attribution of moving particles to be 0
+                        }
                     }
                     else break;
+                }
+                else  // Moving multiple particles
+                {
+                    if (mid.totalLower + mid.countLower < targetLower)
+                    {
+                        // TODO: 12/05 Yining
+                    }
                 }
             }
             else if (mid.totalUpper < targetUpper) // Indicating the upper part need to be expanded
