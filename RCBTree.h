@@ -20,6 +20,14 @@ public:
     void buildDistributedRCBTree();
     int  findCutDimension(HS_float*, HS_float*);
 
+    // Datastructure for the cut information
+    struct MiddleCut {
+        int totalLower, totalUpper;    // Total number of particles in the lower/upper division
+        HS_float maxLower, minUpper;   // The maximum coordinates of particles in lower division and minimum in upper
+        int countLower, countUpper;    // Number of particles at that position
+        int procLower, procUpper;      // which processor owns the particle
+    }
+
 private:
     int nprocs;		// MPI Communication 
     int rank;		// MPI Communication
