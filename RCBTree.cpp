@@ -96,13 +96,14 @@ void RCBTree:buildDistributedRCBTree()
                     midme.totalLower++;
                     if (closeEnough(x, midme.maxLower))
                     {
+                        lowerList[midme.countLower] = i;
                         midme.countLower++;
                     }
                     else if (x > midme.maxLower)
                     {
                         midme.maxLower = x;
                         midme.countLower = 1;
-                        indexLower = i;
+                        lowerList[0] = i;
                     }
                 }
                 else
@@ -111,13 +112,14 @@ void RCBTree:buildDistributedRCBTree()
                     midme.totalUpper++;
                     if (closeEnough(x, midme.minUpper))
                     {
+                        lowerList[midme.countUpper] = i;
                         midme.countUpper++;
                     }
                     else if (x < midme.minUpper)
                     {
                         midme.minUpper = x;
                         midme.countUpper = 1;
-                        indexUpper = i; 
+                        upperList[0] = i;
                     }
                 } 
             }
@@ -131,29 +133,94 @@ void RCBTree:buildDistributedRCBTree()
             if (mid.totalLower < targetLower)  // Indicating the lower part need to be expanded
             {
                 cutMiddle = mid.minUpper;
-                if (mid.countLower == 1)  // Only move one particle
+                if (mid.countUpper == 1)  // Only move one particle
                 {
-                    if (mid.totalLower + mid.countLower < targetLower)
+                    if (mid.totalLower + mid.countUpper < targetLower)
                     {
                         if (rank == midme.procUpper)
                         {
-                            mark[indexUpper] = 0; // In the upper Ranks, mark the attribution of moving particles to be 0
+                            mark[upperList[0]] = 0; // In the upper Ranks, mark the attribution of moving particles to be 0
                         }
                     }
-                    else break;
+                    else breakFlag = true;
                 }
                 else  // Moving multiple particles
                 {
-                    if (mid.totalLower + mid.countLower < targetLower)
+                    if (mid.totalLower + mid.countUpper < targetLower) // All boundary particles need to be sacrificed
                     {
-                        // TODO: 12/05 Yining
+                       for (int i=0; i<midme.countUpper; i++)
+                       {
+                           mark[upperList[i]] = 0; // Move all to the lower partition
+                       } 
+                        
+                    }
+                    else  // Enough for balance, continue
+                    {
+                        // Do a scan over all the ranks, determine how many to move
+                        int localCount = 0;
+                        int countBefore;
+                        if (closeEnough(midme.minUpper, mid.minUpper)) localCount = midme.countUpper;
+                        MPI_Scan(&localCount, &countBefore, 1, MPI_INT, MPI_SUM, comm);
+                        if (mid.totalLower + countBefore < targetLower)
+                        {
+                            int numMove = std::min(targetLower - countBefore, midme.countUpper);
+                            for (int i=0; i<numMove; i++)
+                            {
+                                max[upperList[i]] = 0;
+                            }
+                        }
+                        breakFlag = true;
                     }
                 }
             }
-            else if (mid.totalUpper < targetUpper) // Indicating the upper part need to be expanded
+            else if (mid.totalLower < targetLower) // Indicating the upper part need to be expanded
             {
+                cutMiddle = mid.maxLower;
+                if (mid.countLower == 1)  // Only move one particle
+                {
+                    if (mid.totalUpper + mid.countLower < targetUpper)
+                    {
+                        if (rank == midme.procLower)
+                        {
+                            // In the lower Ranks, mark the attribution of moving particles to be 1
+                            // So that it can be migrated to upper partition
+                            mark[lowerList[0]] = 1; 
+                        }
+                    }
+                    else breakFlag = true;
+                }
+                else  // Moving multiple particles
+                {
+                    if (mid.totalUpper + mid.countLower < targetLower) // All boundary particles need to be sacrificed
+                    {
+                       for (int i=0; i<midme.countLower; i++)
+                       {
+                           mark[lowerList[i]] = 0; // Move all to the lower partition
+                       } 
+                        
+                    }
+                    else  // Enough for balance, continue
+                    {
+                        // Do a scan over all the ranks, determine how many to move
+                        int localCount = 0;
+                        int countBefore;
+                        if (closeEnough(midme.maxLower, mid.maxLower)) localCount = midme.countLower;
+                        MPI_Scan(&localCount, &countBefore, 1, MPI_INT, MPI_SUM, comm);
+                        if (mid.totalUpper + countBefore < targetUpper)
+                        {
+                            int numMove = std::min(targetUpper - countBefore, midme.countLower);
+                            for (int i=0; i<numMove; i++)
+                            {
+                                max[lowerList[i]] = 0;
+                            }
+                        }
+                        breakFlag = true;
+                    }
+                }
             }
-            else break; // Lucky: Even Partition Achieved
+            else breakFlag = true; // Lucky: Even Partition Achieved
+  
+            if (breakFlag) break;
         }
 
         // Mark the particles to 0 (lower than cut) and 1 (higher than cut)
@@ -161,7 +228,6 @@ void RCBTree:buildDistributedRCBTree()
         int numUpperPartLocal = 0;
         for (int i=0; i<numParticles; i++)
         {
-            //TODO  12/01/Yining
 	    if (particles[i][cutDim] < cutMiddle) mark[i] = 0;
             else
 	    {
