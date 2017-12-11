@@ -1,6 +1,9 @@
 #ifndef _TYPE_H_
 #define _TYPE_H_
 
+#include <math.h>
+#include <algorithm>
+
 struct double2 {
     double x, y;
 };
@@ -22,8 +25,9 @@ typedef double2 HS_float2;
 
 typedef int HS_int;
 typedef int HS_bigint;
+typedef long int bigint;
 
-#define INFINITY 1e30
+#define HS_INFINITY 1e30
 #define VERYSMALL 1e-30
 
 #define MAX_ARRAY 100000
@@ -37,5 +41,12 @@ typedef int HS_bigint;
 #define PBC_NEG_Y 0x10
 #define PBC_POS_Z 0x20
 #define PBC_NEG_Z 0x40
+
+bool closeEnough(HS_float x, HS_float y)
+{
+    auto diff = fabs(x - y);
+    auto large = std::max(fabs(x), fabs(y));
+    return diff <= large * VERYSMALL;
+}
 
 #endif

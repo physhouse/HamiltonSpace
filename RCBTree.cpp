@@ -1,19 +1,45 @@
 #include "RCBTree.h"
+#include "Atom.h"
+#include "Type.h"
+#include "Memory.h"
+#include <algorithm>
 #include <mpi.h>
 
-using namespace HamiltonSpace;
+using namespace Hamilton_Space;
 
-RCBTree::RCBTree(std::shared_ptr<Atom> p) : atom(p)
+void cutMerge(void *, void *, int *, MPI_Datatype *);
+
+RCBTree::RCBTree(std::shared_ptr<class Atom> p)
 {
     // Determining the total size of MPI communication spaces
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    // Create MPI data type
+    MPI_Type_contiguous(sizeof(MiddleCut), MPI_CHAR, &cut_type);
+    MPI_Type_commit(&cut_type);
+    MPI_Op_create(cutMerge, 1, &cut_op);
      
+    atom = p;
+
     tree.resize(nprocs);  // Tree records the RCB information for each processors
     rcbinfo = new RCBTreeNode; // rcbinfo records the dimension of the current cut, as well as the cut position
+
+    allocateMatrix2D(particles, BUFFMAX, 3);
+    allocateArray1D(mark, BUFFMAX);
+    allocateArray1D(lowerList, BUFFMAX);
+    allocateArray1D(upperList, BUFFMAX);
 }
 
-void RCBTree:buildDistributedRCBTree()
+RCBTree::~RCBTree()
+{
+    destroy(particles);
+    destroy(mark);
+    destroy(lowerList);
+    destroy(upperList);
+}
+
+void RCBTree::buildDistributedRCBTree()
 {
     // Recursively construct the RCB Tree
     // for each iteraction, split the processors into two groups and generate a new communication subgroup
@@ -47,11 +73,12 @@ void RCBTree:buildDistributedRCBTree()
 
     HS_float cutLow, cutMiddle, cutHigh;
 
-    for (int i=0; i<atom->nlocal; i++)
+    numParticles = atom->nlocal;
+    for (int i=0; i<numParticles; i++)
     {
-        particles[i][0] = x[i][0];
-        particles[i][1] = x[i][1];
-        particles[i][2] = x[i][2];
+        particles[i][0] = atom->x[i][0];
+        particles[i][1] = atom->x[i][1];
+        particles[i][2] = atom->x[i][2];
     }
 
     // Recursively build the binary tree
@@ -67,6 +94,12 @@ void RCBTree:buildDistributedRCBTree()
         int procMiddle = procLow + (procHigh - procLow) / 2 + 1; 
         // For odd number of processors give the lower half one more processor
 
+        // total number of particles
+        int totalNumParticles = 0;
+        MPI_Allreduce(&numParticles, &totalNumParticles, 1, MPI_INT, MPI_SUM, comm);
+        int targetLower = static_cast<int> (totalNumParticles * (procMiddle - procLow) / (procHigh - procLow + 1));
+        int targetUpper = totalNumParticles - targetLower;
+
         // Find the longest axis, cut according to that dimension        
         int cutDim = findCutDimension(lowerBound, upperBound);
         cutLow = lowerBound[cutDim];
@@ -77,19 +110,22 @@ void RCBTree:buildDistributedRCBTree()
 
         // The MiddleCut information
         MiddleCut midme, mid;
+        bool breakFlag = false;
     
+        // Approach 1: Gradual Change of Middle CutPlain\
+        // TODO: Recursive determination of middle CutPlain
         while (1)
         {
             // PHASE I: Generate the MiddleCut Information
-            midme.maxLower = -VERY_BIG_FLOAT;
-            midme.minUpper = VERY_BIG_FLOAT;
+            midme.maxLower = -HS_INFINITY;
+            midme.minUpper = HS_INFINITY;
             midme.countLower = 0;
             midme.countUpper = 0;
          
             int indexLower, indexUpper;
             for (int i=0; i<numParticles; i++)
             {
-                HS_float x = particle[i][cutDim];
+                HS_float x = particles[i][cutDim];
                 if (x < cutMiddle)
                 {
                     mark[i] = 0; // Marker that marks particle in the lower half
@@ -124,7 +160,7 @@ void RCBTree:buildDistributedRCBTree()
                 } 
             }
             // Gather the MiddleCut information from all the processors
-            MPI_Allreduce(&midme, &mid, 1, TYPE_CUT, OP_CUT, comm); // TODO: Implement OP_CUT
+            MPI_Allreduce(&midme, &mid, 1, cut_type, cut_op, comm); // TODO: Implement OP_CUT
 
             // PHASE II: Load Balancing
             // Basic Idea: for the unbalanced partition, sacrifice the boundary layer(or a single particle) of the fatter partition
@@ -166,7 +202,7 @@ void RCBTree:buildDistributedRCBTree()
                             int numMove = std::min(targetLower - countBefore, midme.countUpper);
                             for (int i=0; i<numMove; i++)
                             {
-                                max[upperList[i]] = 0;
+                                mark[upperList[i]] = 0;
                             }
                         }
                         breakFlag = true;
@@ -211,7 +247,7 @@ void RCBTree:buildDistributedRCBTree()
                             int numMove = std::min(targetUpper - countBefore, midme.countLower);
                             for (int i=0; i<numMove; i++)
                             {
-                                max[lowerList[i]] = 0;
+                                mark[lowerList[i]] = 0;
                             }
                         }
                         breakFlag = true;
@@ -225,18 +261,6 @@ void RCBTree:buildDistributedRCBTree()
 
         // Mark the particles to 0 (lower than cut) and 1 (higher than cut)
         // This partitioning is used for communication
-        int numUpperPartLocal = 0;
-        for (int i=0; i<numParticles; i++)
-        {
-	    if (particles[i][cutDim] < cutMiddle) mark[i] = 0;
-            else
-	    {
-		mark[i] = 1;
-		numUpperPartLocal++;
-            }
-        }
-        // Get the number of Atoms in the upper part
-        MPI_Allreduce(&numUpperPart, &numUpper, 1, MPI_INT, MPI_SUM, comm);
     }
 }
 
@@ -258,7 +282,35 @@ int RCBTree::findCutDimension(HS_float* lowerBound, HS_float* upperBound)
     return cutDim;
 }
 
-bool RCBTree:closeEnough(double x, double y)
+// Merge cut structure of two inputs
+void cutMerge(void *in, void *inout, int *len, MPI_Datatype *dptr)
 {
-    return ; //TODO: Float Point Number comparison
+    RCBTree::MiddleCut *cut1 = (RCBTree::MiddleCut *) in;
+    RCBTree::MiddleCut *cut2 = (RCBTree::MiddleCut *) inout;
+
+    cut2->totalLower += cut1->totalLower;
+    if (cut2->maxLower <cut1->maxLower)
+    {
+        cut2->maxLower = cut1->maxLower;
+        cut2->countLower = cut1->countLower;
+        cut2->procLower = cut1->procLower;
+    }
+    else if (closeEnough(cut2->maxLower, cut1->maxLower))
+    {
+        cut2->countLower += cut1->countLower;
+        if (cut1->procLower < cut2->procLower) cut2->procLower = cut1->procLower;
+    }
+
+    cut2->totalUpper += cut1->totalUpper;
+    if (cut2->minUpper > cut1->minUpper)
+    {
+        cut2->minUpper = cut1->minUpper;
+        cut2->countUpper = cut1->countUpper;
+        cut2->procUpper = cut1->procUpper;
+    }
+    else if (closeEnough(cut2->minUpper, cut1->minUpper))
+    {
+        cut2->countUpper += cut1->countUpper;
+        if (cut1->procUpper < cut2->procUpper) cut2->procUpper = cut1->procUpper;
+    }
 }

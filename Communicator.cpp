@@ -49,7 +49,7 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     boxLength[1] = atom->box.lengthy;
     boxLength[2] = atom->box.lengthz;
  
-    HS_float bestSurface = INFINITY;
+    HS_float bestSurface = HS_INFINITY;
     for (int nx=1; nx<=nprocs; nx++)
     {
         for (int ny=1; ny<=nprocs/nx; ny++)
