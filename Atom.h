@@ -42,6 +42,7 @@ public:
 public:
     int nall;		// total number of atoms
     int nlocal, nghost; // nlocal->number of host atoms, nghost->number of ghost atoms
+    int natoms;		// total number of atoms in the system
     HS_float mass;	// For Lennard-Jones Particle with uniform mass
 
     Box box;

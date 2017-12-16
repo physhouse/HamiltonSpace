@@ -11,7 +11,7 @@ struct InputManager
     HS_float beta;
     int      nsteps;
     HS_float dt;
-    int      atomPerProc;
+    int      numAtoms;
     HS_float mass;
     HS_float cutNeighbor;
 };

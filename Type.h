@@ -32,7 +32,7 @@ typedef long int bigint;
 
 #define MAX_ARRAY 100000
 #define EXCHANGEMAX 10000
-#define BUFFMAX 10000
+#define BUFFMAX 200000
 
 #define PBC_ANY_FLAG 0x1
 #define PBC_POS_X 0x2
@@ -42,7 +42,7 @@ typedef long int bigint;
 #define PBC_POS_Z 0x20
 #define PBC_NEG_Z 0x40
 
-bool closeEnough(HS_float x, HS_float y)
+inline bool closeEnough(HS_float x, HS_float y)
 {
     auto diff = fabs(x - y);
     auto large = std::max(fabs(x), fabs(y));

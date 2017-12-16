@@ -12,7 +12,8 @@ using namespace Hamilton_Space;
 Atom::Atom(std::shared_ptr<InputManager> input)
 {
     mass = input->mass;
-    nlocal = input->atomPerProc;
+    natoms = input->numAtoms;
+    nlocal = 0;
     nghost = 0;
     nall = nlocal + nghost;
 
@@ -38,31 +39,55 @@ Atom::~Atom()
 
 void Atom::genInitialConfig(std::shared_ptr<InputManager> input)
 {
-    /* Default: Generate Simple Cublc Lattice */
-    int nperdim = std::cbrt(nlocal);
-
-    std::vector<HS_float> gridSize(3);
-    for (int idim = 0; idim < 3; idim++) {
-        gridSize[idim] = (box.range[idim][1] - box.range[idim][0]) / nperdim;
-    }
-
-    int nx, ny, nz;
+    FILE* fp = fopen("initial.dat", "r");
+    HS_float tx, ty, tz;
     HS_float factor = 1.0 / std::sqrt(mass * input->beta);
-    for (int i=0; i<nlocal; i++)
+    for (int i=0; i<natoms; i++)
     {
-        nz = i / nperdim / nperdim;
-        ny = (i - nz * nperdim * nperdim) / nperdim;
-        nx = i % nperdim;
-
-        x[i][0] = (nx + 0.5) * gridSize[0] + box.range[0][0];
-        x[i][1] = (ny + 0.5) * gridSize[1] + box.range[1][0];
-        x[i][2] = (nz + 0.5) * gridSize[2] + box.range[2][0];
-       
-        /* Initial Velocity from Maxwell Boltzmann Distribution */ 
-        v[i][0] = factor * randomGauss();
-        v[i][1] = factor * randomGauss();
-        v[i][2] = factor * randomGauss();
+        fscanf(fp, "%lf %lf %lf", &tx, &ty, &tz);
+        bool bx = (tx > box.range[0][1]) || (tx < box.range[0][0]);
+        bool by = (ty > box.range[1][1]) || (ty < box.range[1][0]);
+        bool bz = (tz > box.range[2][1]) || (tz < box.range[2][0]);
+        if (!(bx || by || bz))
+        {
+            x[nlocal][0] = tx;
+            x[nlocal][1] = ty;
+            x[nlocal][2] = tz;
+            v[nlocal][0] = factor * randomGauss();
+            v[nlocal][1] = factor * randomGauss();
+            v[nlocal][2] = factor * randomGauss();
+            nlocal++;
+        }
+        //printf("here %d local %d\n", i, nlocal);
     }
+    fclose(fp);
+    nall = nlocal + nghost;
+    /* Default: Generate Simple Cublc Lattice */
+
+    //int nperdim = std::cbrt(nlocal);
+
+    //std::vector<HS_float> gridSize(3);
+    //for (int idim = 0; idim < 3; idim++) {
+    //    gridSize[idim] = (box.range[idim][1] - box.range[idim][0]) / nperdim;
+    //}
+
+    //int nx, ny, nz;
+    //HS_float factor = 1.0 / std::sqrt(mass * input->beta);
+    //for (int i=0; i<nlocal; i++)
+    //{
+    //    nz = i / nperdim / nperdim;
+    //    ny = (i - nz * nperdim * nperdim) / nperdim;
+    //    nx = i % nperdim;
+
+    //    x[i][0] = (nx + 0.5) * gridSize[0] + box.range[0][0];
+    //    x[i][1] = (ny + 0.5) * gridSize[1] + box.range[1][0];
+    //    x[i][2] = (nz + 0.5) * gridSize[2] + box.range[2][0];
+    //   
+    //    /* Initial Velocity from Maxwell Boltzmann Distribution */ 
+    //    v[i][0] = factor * randomGauss();
+    //    v[i][1] = factor * randomGauss();
+    //    v[i][2] = factor * randomGauss();
+    //}
 }
 
 void Atom::clearGhost()

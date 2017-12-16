@@ -20,9 +20,9 @@ public:
     ~RCBTree();
     void buildDistributedRCBTree();
     int  findCutDimension(HS_float*, HS_float*);
+    void swap(int, int);
 
-    // helper functions
-    bool closeEnough(HS_float x, HS_float y);
+    void printFrame();
 
     // Datastructure for the cut information
     struct MiddleCut {
@@ -36,7 +36,8 @@ private:
     int nprocs;		// MPI Communication 
     int rank;		// MPI Communication
     
-    HS_float** particles;  // Store the particle information
+    HS_float** particles;  // Store the particle coordinates information
+    HS_float** velocities; // Store the particle velocities information
     int* mark;
     int* lowerList;
     int* upperList;
@@ -48,6 +49,9 @@ private:
     std::shared_ptr<class Atom> atom;
     RCBTreeNode* rcbinfo;
     std::vector<RCBTreeNode> tree;
+
+    HS_float* bufferSend;
+    HS_float* bufferRecv;
 };
 
 }

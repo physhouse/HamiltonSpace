@@ -5,6 +5,7 @@
 #include "Atom.h"
 #include "Communicator.h"
 #include "InputManager.h"
+#include "RCBTree.h"
 
 namespace Hamilton_Space {
 
@@ -21,6 +22,7 @@ private:
     std::shared_ptr<Atom> atom;
     //std::shared_ptr<class NeighborList> neighbor;
     std::shared_ptr<Communicator> messenger;
+    std::shared_ptr<RCBTree> balancer;
     //std::shared_ptr<class Integrator> manager;
 };
 

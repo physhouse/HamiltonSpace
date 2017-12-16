@@ -15,6 +15,9 @@ HamiltonSpace::HamiltonSpace()
     messenger->setup(input->cutNeighbor, atom);
 
     atom->genInitialConfig(input);
+    
+    balancer = std::make_shared<RCBTree>(atom);
+    balancer->buildDistributedRCBTree();
     exec();
 }
 
@@ -27,7 +30,7 @@ void HamiltonSpace::parseInput()
 {
     VAR_BEGIN
         GET_INT(input->nsteps)
-        GET_INT(input->atomPerProc)
+        GET_INT(input->numAtoms)
         GET_REAL(input->boxLength)
         GET_REAL(input->beta)
         GET_REAL(input->dt)
@@ -38,15 +41,16 @@ void HamiltonSpace::parseInput()
 
 void HamiltonSpace::exec()
 {
-    messenger->generateGhosts(atom);
-    for (int i=0; i<100; i++)
-    {
-       atom->propagate();
-       messenger->communicateGhosts(atom);
-       messenger->reverseCommunicateGhosts(atom);
-    }
-    messenger->exchangeAtoms(atom);
-    atom->enforcePBC();
-    messenger->generateGhosts(atom);
-    atom->printFrame();
+    //
+    //messenger->generateGhosts(atom);
+    //for (int i=0; i<100; i++)
+    //{
+    //   atom->propagate();
+    //   messenger->communicateGhosts(atom);
+    //   messenger->reverseCommunicateGhosts(atom);
+    //}
+    //messenger->exchangeAtoms(atom);
+    //atom->enforcePBC();
+    //messenger->generateGhosts(atom);
+    //atom->printFrame();
 }

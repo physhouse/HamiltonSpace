@@ -12,6 +12,7 @@ void cutMerge(void *, void *, int *, MPI_Datatype *);
 RCBTree::RCBTree(std::shared_ptr<class Atom> p)
 {
     // Determining the total size of MPI communication spaces
+    printf("[RCBTree] RCBTree Load Balancer\n");
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -26,17 +27,23 @@ RCBTree::RCBTree(std::shared_ptr<class Atom> p)
     rcbinfo = new RCBTreeNode; // rcbinfo records the dimension of the current cut, as well as the cut position
 
     allocateMatrix2D(particles, BUFFMAX, 3);
+    allocateMatrix2D(velocities, BUFFMAX, 3);
     allocateArray1D(mark, BUFFMAX);
     allocateArray1D(lowerList, BUFFMAX);
     allocateArray1D(upperList, BUFFMAX);
+    allocateArray1D(bufferSend, BUFFMAX);
+    allocateArray1D(bufferRecv, BUFFMAX);
 }
 
 RCBTree::~RCBTree()
 {
     destroy(particles);
+    destroy(velocities);
     destroy(mark);
     destroy(lowerList);
     destroy(upperList);
+    destroy(bufferSend);
+    destroy(bufferRecv);
 }
 
 void RCBTree::buildDistributedRCBTree()
@@ -97,16 +104,21 @@ void RCBTree::buildDistributedRCBTree()
         // total number of particles
         int totalNumParticles = 0;
         MPI_Allreduce(&numParticles, &totalNumParticles, 1, MPI_INT, MPI_SUM, comm);
+        //printf("[Rank %d] local %d global %d\n", rank, numParticles, totalNumParticles);
         int targetLower = static_cast<int> (totalNumParticles * (procMiddle - procLow) / (procHigh - procLow + 1));
         int targetUpper = totalNumParticles - targetLower;
 
         // Find the longest axis, cut according to that dimension        
         int cutDim = findCutDimension(lowerBound, upperBound);
-        cutLow = lowerBound[cutDim];
+
+        // Note: cutLow denotes the lowerbound of the slab that I would like to examine
+        //       cutHigh denotes the upperbound of the slab that I would like to examine
+        //       By assumption, cutMiddle = 1/2 * (cutLow + cutHigh)
+        cutLow = lowerBound[cutDim];  
         cutHigh = upperBound[cutDim];
         // The cut Middle point is assumed to be determined 
         // based on the assumtion that procs owns same number of atoms
-        cutMiddle = (procMiddle - procLow) * (upperBound[cutDim] - lowerBound[cutDim]) / (procHigh - procLow + 1);
+        //cutMiddle = (procMiddle - procLow) * (upperBound[cutDim] - lowerBound[cutDim]) / (procHigh - procLow + 1);
 
         // The MiddleCut information
         MiddleCut midme, mid;
@@ -116,11 +128,14 @@ void RCBTree::buildDistributedRCBTree()
         // TODO: Recursive determination of middle CutPlain
         while (1)
         {
+            cutMiddle = 0.5 * (cutLow + cutHigh);
             // PHASE I: Generate the MiddleCut Information
             midme.maxLower = -HS_INFINITY;
             midme.minUpper = HS_INFINITY;
             midme.countLower = 0;
             midme.countUpper = 0;
+            midme.totalLower = 0;
+            midme.totalUpper = 0;
          
             int indexLower, indexUpper;
             for (int i=0; i<numParticles; i++)
@@ -161,6 +176,9 @@ void RCBTree::buildDistributedRCBTree()
             }
             // Gather the MiddleCut information from all the processors
             MPI_Allreduce(&midme, &mid, 1, cut_type, cut_op, comm); // TODO: Implement OP_CUT
+            //printf("[Rank %d] local totalLow %d totalUp %d\n", rank, midme.totalLower, midme.totalUpper);
+            //printf("[Rank %d] cutMiddle = %lf lo %lf hi %lf  countLower = %d countUpper = %d totallo %d totalhi %d\n", rank, cutMiddle, mid.maxLower, mid.minUpper, mid.countLower, mid.countUpper, mid.totalLower, mid.totalUpper);
+            //printf("[Rank %d] targetLo = %d hi %d\n", rank, targetLower, targetUpper);
 
             // PHASE II: Load Balancing
             // Basic Idea: for the unbalanced partition, sacrifice the boundary layer(or a single particle) of the fatter partition
@@ -168,7 +186,7 @@ void RCBTree::buildDistributedRCBTree()
             // iterate until equipartition
             if (mid.totalLower < targetLower)  // Indicating the lower part need to be expanded
             {
-                cutMiddle = mid.minUpper;
+                cutLow = mid.minUpper;
                 if (mid.countUpper == 1)  // Only move one particle
                 {
                     if (mid.totalLower + mid.countUpper < targetLower)
@@ -197,9 +215,9 @@ void RCBTree::buildDistributedRCBTree()
                         int countBefore;
                         if (closeEnough(midme.minUpper, mid.minUpper)) localCount = midme.countUpper;
                         MPI_Scan(&localCount, &countBefore, 1, MPI_INT, MPI_SUM, comm);
-                        if (mid.totalLower + countBefore < targetLower)
+                        if ((mid.totalLower + countBefore < targetLower))
                         {
-                            int numMove = std::min(targetLower - countBefore, midme.countUpper);
+                            int numMove = std::min(targetLower - countBefore, localCount);
                             for (int i=0; i<numMove; i++)
                             {
                                 mark[upperList[i]] = 0;
@@ -209,9 +227,9 @@ void RCBTree::buildDistributedRCBTree()
                     }
                 }
             }
-            else if (mid.totalLower < targetLower) // Indicating the upper part need to be expanded
+            else if (mid.totalUpper < targetUpper) // Indicating the upper part need to be expanded
             {
-                cutMiddle = mid.maxLower;
+                cutHigh = mid.maxLower;
                 if (mid.countLower == 1)  // Only move one particle
                 {
                     if (mid.totalUpper + mid.countLower < targetUpper)
@@ -244,7 +262,7 @@ void RCBTree::buildDistributedRCBTree()
                         MPI_Scan(&localCount, &countBefore, 1, MPI_INT, MPI_SUM, comm);
                         if (mid.totalUpper + countBefore < targetUpper)
                         {
-                            int numMove = std::min(targetUpper - countBefore, midme.countLower);
+                            int numMove = std::min(targetUpper - countBefore, localCount);
                             for (int i=0; i<numMove; i++)
                             {
                                 mark[lowerList[i]] = 0;
@@ -255,16 +273,118 @@ void RCBTree::buildDistributedRCBTree()
                 }
             }
             else breakFlag = true; // Lucky: Even Partition Achieved
-  
+            printf("[Rank %d] cutMiddle = %lf totalUpper %d totalLower %d\n", rank, cutMiddle, mid.totalUpper, mid.totalLower);
             if (breakFlag) break;
-        }
+        } // End of while(1) loop
 
+        //printFrame();
+        //MPI_Barrier(comm);
+        //exit(-1);
+        
         // Mark the particles to 0 (lower than cut) and 1 (higher than cut)
         // This partitioning is used for communication
-    }
+        //
+        // Find out the processor I would like to exchange particles with
+        int myBuddy, activeSide;
+        if (rank < procMiddle)
+        {
+             myBuddy = rank + procMiddle - procLow;
+             activeSide = 0; 	// Lower than the cutoff -> proc 0->procMiddle-1
+        }
+        else
+        {
+             myBuddy = rank - procMiddle + procLow;
+             activeSide = 1;	// Higher than the cutoff -> proc procMiddle->procHigh-1
+        }
+
+        // Partition the list based on the particle marks
+        // particles[0->nkeep-1] = particles remains here, particles[nkeep->numParticles] = particles leaving this processor
+        int nkeep = numParticles - 1;
+        int i;
+        while (i < nkeep)
+        {
+            if (mark[i] != activeSide)
+            {
+                swap(i, nkeep);
+                continue;
+            }
+            i++;
+        }
+
+        int sendCount = 0;
+        for (int i=nkeep; i<numParticles; i++)
+        {
+            bufferSend[6*sendCount] = particles[i][0];
+            bufferSend[6*sendCount + 1] = particles[i][1];
+            bufferSend[6*sendCount + 2] = particles[i][2];
+            bufferSend[6*sendCount + 3] = velocities[i][0];
+            bufferSend[6*sendCount + 4] = velocities[i][1];
+            bufferSend[6*sendCount + 5] = velocities[i][2];
+            sendCount++;
+        }
+ 
+        // Start the communication process
+        MPI_Status status;
+        MPI_Request request;
+        int recvCount;
+        MPI_Irecv(&recvCount, 1, MPI_INT, myBuddy, 0, comm, &request);
+        MPI_Send(&sendCount, 1, MPI_INT, myBuddy, 0, comm);
+        MPI_Wait(&request, &status);
+
+        MPI_Irecv(bufferRecv, recvCount, MPI_DOUBLE, myBuddy, 0, comm, &request);
+        MPI_Send(bufferSend, sendCount, MPI_DOUBLE, myBuddy, 0, comm);
+        MPI_Wait(&request, &status);
+
+        numParticles = nkeep + recvCount;
+        for (int i=nkeep; i<numParticles; i++)
+        {
+            particles[i][0] = bufferRecv[6*i];
+            particles[i][1] = bufferRecv[6*i + 1];
+            particles[i][2] = bufferRecv[6*i + 2];
+            velocities[i][0] = bufferRecv[6*i + 3];
+            velocities[i][1] = bufferRecv[6*i + 4];
+            velocities[i][2] = bufferRecv[6*i + 5];
+        }
+
+        // Split the communicator to 1/2 of its original size
+        int split;
+        if (rank < procMiddle)
+        {
+            procHigh = procMiddle - 1;
+            split = 0;
+        }       
+        else
+        {
+            procLow = procMiddle;
+            split = 1;
+        }
+
+        MPI_Comm comm_half;
+        MPI_Comm_split(comm, split, rank, &comm_half);
+        MPI_Comm_free(&comm);
+        comm = comm_half;
+    } // End of while (proc!=procLow && proc!=procHigh) loop
 }
 
 // helper functions
+void RCBTree::swap(int i, int j)
+{
+    double temp;
+    int tempMark;
+    for (int dim = 0; dim < 3; dim++) 
+    {
+        temp = particles[i][dim];
+        particles[i][dim] = particles[j][dim];
+        particles[j][dim] = temp;
+        temp = velocities[i][dim];
+        velocities[i][dim] = velocities[j][dim];
+        velocities[j][dim] = temp;
+    }
+    tempMark = mark[i];
+    mark[i] = mark[j];
+    mark[j] = temp;
+}
+
 int RCBTree::findCutDimension(HS_float* lowerBound, HS_float* upperBound)
 {
     int cutDim = 0;
@@ -313,4 +433,19 @@ void cutMerge(void *in, void *inout, int *len, MPI_Datatype *dptr)
         cut2->countUpper += cut1->countUpper;
         if (cut1->procUpper < cut2->procUpper) cut2->procUpper = cut1->procUpper;
     }
+}
+
+void RCBTree::printFrame()
+{
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    char filename[100];
+    sprintf(filename, "rcb_p%d.dat", me);
+    FILE* fp = fopen(filename, "w");
+    fprintf(fp, "%s\nnparticles %d\n", filename,  numParticles);
+    for (int i=0; i<numParticles; i++)
+    {
+        fprintf(fp, "%lf %lf %lf %d\n", particles[i][0], particles[i][1], particles[i][2], mark[i]);
+    }
+    fclose(fp);
 }
