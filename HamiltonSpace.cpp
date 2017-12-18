@@ -15,6 +15,7 @@ HamiltonSpace::HamiltonSpace()
     messenger->setup(input->cutNeighbor, atom);
 
     atom->genInitialConfig(input);
+    atom->printFrame();
     
     balancer = std::make_shared<RCBTree>(atom);
     balancer->buildDistributedRCBTree();
