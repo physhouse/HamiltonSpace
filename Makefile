@@ -1,8 +1,8 @@
 OPT     = -std=c++0x -O2
 CC      = mpiicpc $(OPT)
 
-hs_mpi: main.o Atom.o Communicator.o HamiltonSpace.o RCBTree.o
-	$(CC) -o hs_mpi main.o Atom.o Communicator.o HamiltonSpace.o RCBTree.o
+hs_mpi: main.o Atom.o Communicator.o HamiltonSpace.o RCBTree.o CommRCB.o
+	$(CC) -o hs_mpi main.o Atom.o Communicator.o HamiltonSpace.o RCBTree.o CommRCB.o
 
 main.o: main.cpp
 	$(CC) -c main.cpp
@@ -18,4 +18,7 @@ Communicator.o: Communicator.cpp
 
 RCBTree.o: RCBTree.cpp
 	$(CC) -c RCBTree.cpp
+
+CommRCB.o: CommRCB.cpp
+	$(CC) -c CommRCB.cpp
 

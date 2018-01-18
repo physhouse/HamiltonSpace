@@ -3,6 +3,7 @@
 #include "Type.h"
 #include "Random.h"
 #include "mpi.h"
+#include "RCBTree.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -17,8 +18,11 @@ Atom::Atom(std::shared_ptr<InputManager> input)
     nghost = 0;
     nall = nlocal + nghost;
 
-    box.lengthx = box.lengthy = box.lengthz = input->boxLength;
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
     box.range.resize(3);
+    box.length.resize(3);
+    box.length[0] = box.length[1] = box.length[2] = input->boxLength;
     for (auto& item: box.range) item.resize(2);
 
     x.resize(MAX_ARRAY);
@@ -131,9 +135,9 @@ void Atom::packSendAtoms(int first,
             if (x[i][dim] < hi && x[i][dim] > lo)
             {
                 sendList[nsend++] = i;
-                bufferSend[(*count)++] = x[i][0] + pbcx * box.lengthx;
-                bufferSend[(*count)++] = x[i][1] + pbcy * box.lengthy;
-                bufferSend[(*count)++] = x[i][2] + pbcz * box.lengthz;
+                bufferSend[(*count)++] = x[i][0] + pbcx * box.length[0];
+                bufferSend[(*count)++] = x[i][1] + pbcy * box.length[1];
+                bufferSend[(*count)++] = x[i][2] + pbcz * box.length[2];
                 //printf("here %lf %lf %lf count = %d\n", x[i][0], x[i][1], x[i][2], *count);
             }
         }
@@ -153,6 +157,74 @@ void Atom::packSendAtoms(int first,
     }
 }
 
+/* Wrap up the atoms to be sent in bufferSend (for RCB load balancer)*/
+void Atom::packSendAtomsRCB(int first,
+			    int last,
+                            int dim,
+			    HS_float* lo,
+			    HS_float* hi,
+                            int pbcFlag,
+			    int* count,
+			    HS_float* bufferSend,
+			    int* sendList)
+{
+    *count = 0;
+    bool pbcAny = pbcFlag & PBC_ANY_FLAG;
+    int pbcx, pbcy, pbcz;
+    pbcx = pbcy = pbcz = 0;
+    
+    int nsend = 0; 
+    //printf("%d %d pbcAny = %d\n", first, last, pbcAny);
+    if (pbcAny)
+    {
+        if (pbcFlag & PBC_POS_X) pbcx = 1;
+        else if (pbcFlag & PBC_NEG_X) pbcx = -1;
+        if (pbcFlag & PBC_POS_Y) pbcy = 1;
+        else if (pbcFlag & PBC_NEG_Y) pbcy = -1;
+        if (pbcFlag & PBC_POS_Z) pbcz = 1;
+        else if (pbcFlag & PBC_NEG_Z) pbcz = -1;
+
+        printf("x y z = %d %d %d\n", pbcx, pbcy, pbcz);
+
+        for (int i = first; i <= last; i++)
+        {
+            bool isSend = true;
+            for (int dim = 0; dim<3; dim++)
+            {
+                if (x[i][dim] > hi[dim] || x[i][dim] < lo[dim]) isSend = false;
+            }
+            if (isSend)
+            {
+                //printf("sending\n");
+                sendList[nsend++] = i;
+                bufferSend[(*count)++] = x[i][0] + pbcx * box.length[0];
+                bufferSend[(*count)++] = x[i][1] + pbcy * box.length[1];
+                bufferSend[(*count)++] = x[i][2] + pbcz * box.length[2];
+                //printf("here %lf %lf %lf count = %d\n", x[i][0], x[i][1], x[i][2], *count);
+            }
+        }
+    }
+    else
+    {
+        for (int i = first; i <= last; i++)
+        {
+            bool isSend = true;
+            for (int dim = 0; dim<3; dim++)
+            {
+                if (x[i][dim] > hi[dim] || x[i][dim] < lo[dim]) isSend = false;
+            }
+            if (isSend)
+            {
+                //printf("sending\n");
+                sendList[nsend++] = i;
+                bufferSend[(*count)++] = x[i][0];
+                bufferSend[(*count)++] = x[i][1];
+                bufferSend[(*count)++] = x[i][2];
+            }
+        }
+    }
+    //printf("count = %d\n", *count);
+}
 /* Unwrap the receive buffer information in local storage */
 void Atom::unpackRecvAtoms(int count,
                            HS_float* buffer)
@@ -268,9 +340,9 @@ void Atom::packCommunicateGhosts(int count,
         for (int j = 0; j <= count; j++)
         {
             int i = sendList[j];
-            bufferSend[nsend++] = x[i][0] + pbcx * box.lengthx;
-            bufferSend[nsend++] = x[i][1] + pbcy * box.lengthy;
-            bufferSend[nsend++] = x[i][2] + pbcz * box.lengthz;
+            bufferSend[nsend++] = x[i][0] + pbcx * box.length[0];
+            bufferSend[nsend++] = x[i][1] + pbcy * box.length[1];
+            bufferSend[nsend++] = x[i][2] + pbcz * box.length[2];
         }
     }
     else
@@ -322,18 +394,70 @@ void Atom::unpackReverseCommunication(int count,
     }
 }
 
+void Atom::packExchangeRCB(std::vector<HS_float*> &bufferSend,
+                           std::vector<int> &sendNum,
+                           int dim,
+                           RCBTreeNode* tree)
+{
+    int i = 0;
+    while (i < nlocal)
+    {
+         if (x[i][dim] < 0.0 || x[i][dim] > box.length[dim])
+         {
+             int proc = findParticleInRCBTree(x[i], tree, 0, nprocs - 1);
+
+             bufferSend[proc][sendNum[proc]++] = x[i][0];
+             bufferSend[proc][sendNum[proc]++] = x[i][1];
+             bufferSend[proc][sendNum[proc]++] = x[i][2];
+             bufferSend[proc][sendNum[proc]++] = v[i][0];
+             bufferSend[proc][sendNum[proc]++] = v[i][1];
+             bufferSend[proc][sendNum[proc]++] = v[i][2];
+
+             swap(i, nlocal - 1);
+             nlocal--;
+         }
+         else 
+         {
+             i++;
+         }
+    }
+}
+
+void Atom::unpackExchangeRCB(std::vector<HS_float*> &bufferRecv,
+                             std::vector<int> &recvNum,
+                             int numOverlaps)
+{
+    int incr = 0;
+    for (int j=0; j<numOverlaps; j++)
+    {
+        for (int i=0; i<recvNum[j]/6; i++)
+        {
+             x[nlocal + incr][0] = bufferRecv[j][6*i];
+             x[nlocal + incr][1] = bufferRecv[j][6*i + 1];
+             x[nlocal + incr][2] = bufferRecv[j][6*i + 2];
+
+             v[nlocal + incr][0] = bufferRecv[j][6*i + 3];
+             v[nlocal + incr][1] = bufferRecv[j][6*i + 4];
+             v[nlocal + incr][2] = bufferRecv[j][6*i + 5];
+             incr++;
+        }
+    }
+    nlocal += incr;
+    nall += incr;
+}
+
 // To test the parallel Implementation
 //
 void Atom::enforcePBC()
 {
     for (int i=0; i<nlocal; i++)
     {
-        if (x[i][0] < 0.0) x[i][0] += box.lengthx;
-        if (x[i][0] > box.lengthx) x[i][0] -= box.lengthx;
-        if (x[i][1] < 0.0) x[i][1] += box.lengthy;
-        if (x[i][1] > box.lengthy) x[i][1] -= box.lengthy;
-        if (x[i][2] < 0.0) x[i][2] += box.lengthz;
-        if (x[i][2] > box.lengthz) x[i][2] -= box.lengthz;
+        if (x[i][0] < 0.0) x[i][0] += box.length[0];
+        if (x[i][0] > box.length[0]) x[i][0] -= box.length[0];
+        if (x[i][1] < 0.0) x[i][1] += box.length[1];
+        if (x[i][1] > box.length[1]) x[i][1] -= box.length[1];
+        if (x[i][2] < 0.0) x[i][2] += box.length[2];
+        if (x[i][2] > box.length[2]) x[i][2] -= box.length[2];
     }
 }
 
@@ -362,3 +486,18 @@ void Atom::propagate()
     }
 }
 
+// Walk the binary tree to find the proc id of the particle
+int Atom::findParticleInRCBTree(std::vector<HS_float> x, RCBTreeNode* tree, int start, int end)
+{
+    if (start == end)
+        return start;
+    else
+    {
+        int procMiddle = start + (end - start) / 2 + 1;
+        HS_float cut = tree[procMiddle].cut;
+        int dim = tree[procMiddle].dimension;
+
+        if (x[dim] < cut) return findParticleInRCBTree(x, tree, start, procMiddle - 1);
+        else  return findParticleInRCBTree(x, tree, procMiddle, end);
+    }
+}

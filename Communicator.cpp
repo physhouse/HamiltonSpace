@@ -45,9 +45,9 @@ void Communicator::setup(HS_float cutoff, std::shared_ptr<Atom> atom)
     // the particles near the boundaries are at the lowest ratio
 
     std::vector<HS_float> boxLength(3);
-    boxLength[0] = atom->box.lengthx;
-    boxLength[1] = atom->box.lengthy;
-    boxLength[2] = atom->box.lengthz;
+    boxLength[0] = atom->box.length[0];
+    boxLength[1] = atom->box.length[1];
+    boxLength[2] = atom->box.length[2];
  
     HS_float bestSurface = HS_INFINITY;
     for (int nx=1; nx<=nprocs; nx++)

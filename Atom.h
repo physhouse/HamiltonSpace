@@ -11,9 +11,7 @@ namespace Hamilton_Space {
 struct Box
 {
     std::vector<std::vector<HS_float> > range;
-    HS_float lengthx;
-    HS_float lengthy;
-    HS_float lengthz;
+    std::vector<HS_float> length;
 };
 
 class Atom
@@ -33,11 +31,17 @@ public:
     void packReverseCommunication(int count, int startIndex, HS_float* buffer);
     void unpackReverseCommunication(int count, int* sendlist, HS_float* buffer);
 
+    void packSendAtomsRCB(int first, int last, int dim, HS_float* lo, HS_float* hi, int pbcFlag, int* count, HS_float* buffer, int* sendList);
+    void packExchangeRCB(std::vector<HS_float*> &, std::vector<int> &, int dim, RCBTreeNode* tree);
+    void unpackExchangeRCB(std::vector<HS_float*> &, std::vector<int> &, int);
+
     void swap(int i, int j);
  
     void enforcePBC();
+    int  findParticleInRCBTree(std::vector<HS_float> x, RCBTreeNode* tree, int start, int end);
     void printFrame();  // For Test
     void propagate();   // For Test
+
 
 public:
     int nall;		// total number of atoms
@@ -46,6 +50,7 @@ public:
     HS_float mass;	// For Lennard-Jones Particle with uniform mass
 
     Box box;
+    int nprocs;
 
     std::vector<std::vector<HS_float> > x;
     std::vector<std::vector<HS_float> > v;

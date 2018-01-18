@@ -23,8 +23,9 @@ RCBTree::RCBTree(std::shared_ptr<class Atom> p)
      
     atom = p;
 
-    tree.resize(nprocs);  // Tree records the RCB information for each processors
-    rcbinfo = new RCBTreeNode; // rcbinfo records the dimension of the current cut, as well as the cut position
+    //tree.resize(nprocs);  // Tree records the RCB information for each processors
+    rcbinfo.cut = HS_INFINITY; // rcbinfo records the dimension of the current cut, as well as the cut position
+    rcbinfo.dimension = -1; // Default: The rcbinfo have dimension -1 and infinity for cut, meaning not a valid infomation
 
     allocateMatrix2D(particles, BUFFMAX, 3);
     allocateMatrix2D(velocities, BUFFMAX, 3);
@@ -66,9 +67,9 @@ void RCBTree::buildDistributedRCBTree()
     lowerBound[0] = 0.0;
     lowerBound[1] = 0.0;
     lowerBound[2] = 0.0;
-    upperBound[0] = atom->box.lengthx;
-    upperBound[1] = atom->box.lengthy;
-    upperBound[2] = atom->box.lengthz;
+    upperBound[0] = atom->box.length[0];
+    upperBound[1] = atom->box.length[1];
+    upperBound[2] = atom->box.length[2];
 
     //  cutLow             cutMiddle          cutHigh
     //      _____________________________________
@@ -273,7 +274,13 @@ void RCBTree::buildDistributedRCBTree()
             if (breakFlag) break;
         } // End of while(1) loop
 
-        
+        // Store the cut infomation only if I am the procMiddle
+        if (rank == procMiddle)
+        {
+           rcbinfo.cut = cutMiddle; 
+           rcbinfo.dimension = cutDim;
+        }
+
         // Mark the particles to 0 (lower than cut) and 1 (higher than cut)
         // This partitioning is used for communication
         //
@@ -348,9 +355,6 @@ void RCBTree::buildDistributedRCBTree()
             velocities[i + nkeep][2] = bufferRecv[6*i + 5];
         }
 
-        //printFrame();
-        //MPI_Barrier(comm);
-        //exit(-1);
         // Split the communicator to 1/2 of its original size
         int split;
         if (rank < procMiddle)
@@ -373,6 +377,34 @@ void RCBTree::buildDistributedRCBTree()
     printFrame();
     MPI_Barrier(comm);
     printf("[Rank %d] lower %lf %lf %lf upper %lf %lf %lf\n", rank, lowerBound[0],lowerBound[1],lowerBound[2],upperBound[0],upperBound[1],upperBound[2]);
+
+    // Update the domain infomation to Atom class
+    rcbinfo.split[0] = atom->box.range[0][0] = lowerBound[0];
+    rcbinfo.split[1] = atom->box.range[1][0] = lowerBound[1];
+    rcbinfo.split[2] = atom->box.range[2][0] = lowerBound[2];
+    rcbinfo.split[3] = atom->box.range[0][1] = upperBound[0];
+    rcbinfo.split[4] = atom->box.range[1][1] = upperBound[1];
+    rcbinfo.split[5] = atom->box.range[2][1] = upperBound[2];
+
+    // Update the particle coordinate information
+    atom->nlocal = numParticles;
+    atom->nghost = 0;
+    atom->nall = atom->nlocal + atom->nghost;
+    for (int i=0; i<numParticles; i++)
+    {
+        atom->x[i][0] = particles[i][0];
+        atom->x[i][1] = particles[i][1];
+        atom->x[i][2] = particles[i][2];
+        atom->v[i][0] = velocities[i][0];
+        atom->v[i][1] = velocities[i][1];
+        atom->v[i][2] = velocities[i][2];
+    }
+}
+
+// Return the RCB tree node that the current processor is keeping
+RCBTreeNode RCBTree::getMyRCBTreeNode()
+{
+    return rcbinfo;
 }
 
 // helper functions
@@ -411,22 +443,6 @@ int RCBTree::findCutDimension(HS_float* lowerBound, HS_float* upperBound)
     return cutDim;
 }
 
-// For Debugging purpose
-void RCBTree::printFrame()
-{
-    int me;
-    MPI_Comm_rank(MPI_COMM_WORLD, &me);
-    char filename[100];
-    sprintf(filename, "rcb_p%d.dat", me);
-    FILE* fp = fopen(filename, "w");
-    fprintf(fp, "%s\nnparticles %d\n", filename,  numParticles);
-    for (int i=0; i<numParticles; i++)
-    {
-        fprintf(fp, "%lf %lf %lf %d\n", particles[i][0], particles[i][1], particles[i][2], mark[i]);
-    }
-    fclose(fp);
-}
-
 // Merge cut structure of two inputs
 // Stragety:
 //     maxLower coutLower procLower -> should be dealed with together
@@ -462,4 +478,20 @@ void cutMerge(void *in, void *inout, int *len, MPI_Datatype *dptr)
         cut2->countUpper += cut1->countUpper;
         if (cut1->procUpper < cut2->procUpper) cut2->procUpper = cut1->procUpper;
     }
+}
+
+// For Debugging purpose
+void RCBTree::printFrame()
+{
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    char filename[100];
+    sprintf(filename, "rcb_p%d.dat", me);
+    FILE* fp = fopen(filename, "w");
+    fprintf(fp, "%s\nnparticles %d\n", filename,  numParticles);
+    for (int i=0; i<numParticles; i++)
+    {
+        fprintf(fp, "%lf %lf %lf %d\n", particles[i][0], particles[i][1], particles[i][2], mark[i]);
+    }
+    fclose(fp);
 }

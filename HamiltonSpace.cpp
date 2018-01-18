@@ -19,6 +19,10 @@ HamiltonSpace::HamiltonSpace()
     
     balancer = std::make_shared<RCBTree>(atom);
     balancer->buildDistributedRCBTree();
+    printf("finished setup\n");
+
+    messengerRCB = std::make_shared<CommRCB>(input);
+    messengerRCB->setup(input->cutNeighbor, atom, balancer->getMyRCBTreeNode());
     exec();
 }
 
@@ -42,7 +46,7 @@ void HamiltonSpace::parseInput()
 
 void HamiltonSpace::exec()
 {
-    //
+    // Testing the Grid Communicator
     //messenger->generateGhosts(atom);
     //for (int i=0; i<100; i++)
     //{
@@ -54,4 +58,7 @@ void HamiltonSpace::exec()
     //atom->enforcePBC();
     //messenger->generateGhosts(atom);
     //atom->printFrame();
+
+    messengerRCB->generateGhosts(atom);
+    atom->printFrame();
 }

@@ -7,12 +7,6 @@
 
 namespace Hamilton_Space {
 
-struct RCBTreeNode
-{
-    int dimension;
-    HS_float cut;
-};
-
 class RCBTree
 {
 public:
@@ -23,6 +17,8 @@ public:
     void swap(int, int);
 
     void printFrame();
+    
+    RCBTreeNode getMyRCBTreeNode();
 
     // Datastructure for the cut information
     struct MiddleCut {
@@ -47,8 +43,7 @@ private:
 
     int numParticles;
     std::shared_ptr<class Atom> atom;
-    RCBTreeNode* rcbinfo;
-    std::vector<RCBTreeNode> tree;
+    RCBTreeNode rcbinfo;
 
     HS_float* bufferSend;
     HS_float* bufferRecv;

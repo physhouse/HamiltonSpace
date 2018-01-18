@@ -32,7 +32,7 @@ typedef long int bigint;
 
 #define MAX_ARRAY 100000
 #define EXCHANGEMAX 10000
-#define BUFFMAX 200000
+#define BUFFMAX 500000
 
 #define PBC_ANY_FLAG 0x1
 #define PBC_POS_X 0x2
@@ -48,5 +48,12 @@ inline bool closeEnough(HS_float x, HS_float y)
     auto large = std::max(fabs(x), fabs(y));
     return diff <= large * VERYSMALL;
 }
+
+struct RCBTreeNode
+{
+    int dimension;
+    HS_float cut;
+    HS_float split[6];
+};
 
 #endif
